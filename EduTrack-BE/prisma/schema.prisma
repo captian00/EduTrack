@@ -1,0 +1,173 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+enum LessonStatus {
+  SCHEDULED
+  COMPLETED
+  CANCELLED
+}
+
+enum AttendanceStatus {
+  PRESENT
+  ABSENT_EXCUSED
+  ABSENT_UNEXCUSED
+  MAKEUP
+}
+
+enum PaymentMethod {
+  CASH
+  BANK_TRANSFER
+  OTHER
+}
+
+model Student {
+  id          String   @id @default(uuid()) @db.Uuid
+  ownerId     String   @db.Uuid
+  studentCode String
+  fullName    String
+  parentName  String?
+  parentPhone String?
+  notes       String?
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  enrollments Enrollment[]
+  attendances Attendance[]
+  payments    Payment[]
+
+  @@unique([ownerId, studentCode])
+  @@index([ownerId, isActive])
+  @@index([ownerId, fullName])
+}
+
+model Class {
+  id           String   @id @default(uuid()) @db.Uuid
+  ownerId      String   @db.Uuid
+  name         String
+  defaultFee   Int
+  scheduleNote String?
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  enrollments Enrollment[]
+  lessons     Lesson[]
+
+  @@index([ownerId, isActive])
+}
+
+model Enrollment {
+  id            String    @id @default(uuid()) @db.Uuid
+  ownerId       String    @db.Uuid
+  studentId     String    @db.Uuid
+  classId       String    @db.Uuid
+  feePerSession Int
+  startDate     DateTime  @db.Date
+  endDate       DateTime? @db.Date
+  isActive      Boolean   @default(true)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  student Student @relation(fields: [studentId], references: [id], onDelete: Restrict)
+  class   Class   @relation(fields: [classId], references: [id], onDelete: Restrict)
+
+  @@index([ownerId, studentId])
+  @@index([ownerId, classId])
+  @@index([classId, startDate, endDate])
+}
+
+model Lesson {
+  id         String       @id @default(uuid()) @db.Uuid
+  ownerId    String       @db.Uuid
+  classId    String       @db.Uuid
+  lessonDate DateTime     @db.Date
+  startTime  DateTime?    @db.Time
+  endTime    DateTime?    @db.Time
+  topic      String?
+  status     LessonStatus @default(SCHEDULED)
+  createdAt  DateTime     @default(now())
+  updatedAt  DateTime     @updatedAt
+
+  class       Class        @relation(fields: [classId], references: [id], onDelete: Restrict)
+  attendances Attendance[]
+
+  @@index([ownerId, lessonDate])
+  @@index([ownerId, classId])
+}
+
+model Attendance {
+  id         String           @id @default(uuid()) @db.Uuid
+  ownerId    String           @db.Uuid
+  lessonId   String           @db.Uuid
+  studentId  String           @db.Uuid
+  status     AttendanceStatus
+  feeAmount  Int
+  isBillable Boolean
+  note       String?
+  createdAt  DateTime         @default(now())
+  updatedAt  DateTime         @updatedAt
+
+  lesson     Lesson              @relation(fields: [lessonId], references: [id], onDelete: Restrict)
+  student    Student             @relation(fields: [studentId], references: [id], onDelete: Restrict)
+  allocations PaymentAllocation[]
+
+  @@unique([lessonId, studentId])
+  @@index([ownerId, studentId])
+  @@index([ownerId, isBillable])
+}
+
+model Payment {
+  id        String        @id @default(uuid()) @db.Uuid
+  ownerId   String        @db.Uuid
+  studentId String        @db.Uuid
+  amount    Int
+  paidAt    DateTime
+  method    PaymentMethod
+  reference String?
+  note      String?
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
+
+  student     Student             @relation(fields: [studentId], references: [id], onDelete: Restrict)
+  allocations PaymentAllocation[]
+
+  @@index([ownerId, studentId])
+  @@index([ownerId, paidAt])
+}
+
+model PaymentAllocation {
+  id           String   @id @default(uuid()) @db.Uuid
+  ownerId      String   @db.Uuid
+  paymentId    String   @db.Uuid
+  attendanceId String   @db.Uuid
+  amount        Int
+  createdAt     DateTime @default(now())
+
+  payment    Payment    @relation(fields: [paymentId], references: [id], onDelete: Restrict)
+  attendance Attendance @relation(fields: [attendanceId], references: [id], onDelete: Restrict)
+
+  @@unique([paymentId, attendanceId])
+  @@index([ownerId, attendanceId])
+}
+
+model OwnerSettings {
+  id                          String   @id @default(uuid()) @db.Uuid
+  ownerId                     String   @unique @db.Uuid
+  displayName                 String?
+  bankCode                    String?
+  bankAccountNumber           String?
+  bankAccountName             String?
+  billExcusedAbsence          Boolean  @default(false)
+  billUnexcusedAbsence        Boolean  @default(true)
+  transferDescriptionTemplate String   @default("EDU {STUDENT_CODE} {YYYYMM}")
+  createdAt                   DateTime @default(now())
+  updatedAt                   DateTime @updatedAt
+}
