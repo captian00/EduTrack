@@ -22,4 +22,20 @@ describe('validateEnvironment', () => {
       validateEnvironment({ ...validEnvironment, PORT: '70000' }),
     ).toThrow();
   });
+
+  it('requires a cron secret in production', () => {
+    expect(() =>
+      validateEnvironment({ ...validEnvironment, NODE_ENV: 'production' }),
+    ).toThrow('CRON_SECRET is required in production');
+  });
+
+  it('accepts a production environment with a strong cron secret', () => {
+    expect(
+      validateEnvironment({
+        ...validEnvironment,
+        NODE_ENV: 'production',
+        CRON_SECRET: 'a-production-secret-with-32-chars',
+      }).NODE_ENV,
+    ).toBe('production');
+  });
 });

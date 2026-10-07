@@ -8,6 +8,7 @@ import {
   IsString,
   IsUrl,
   Max,
+  MinLength,
   Min,
   validateSync,
 } from 'class-validator';
@@ -40,6 +41,11 @@ class EnvironmentVariables {
   @IsOptional()
   @IsString()
   SUPABASE_SERVICE_ROLE_KEY?: string;
+
+  @IsOptional()
+  @IsString()
+  @MinLength(16)
+  CRON_SECRET?: string;
 }
 
 export function validateEnvironment(config: Record<string, unknown>) {
@@ -50,6 +56,10 @@ export function validateEnvironment(config: Record<string, unknown>) {
 
   if (errors.length > 0) {
     throw new Error(errors.toString());
+  }
+
+  if (validated.NODE_ENV === 'production' && !validated.CRON_SECRET) {
+    throw new Error('CRON_SECRET is required in production');
   }
 
   return validated;
