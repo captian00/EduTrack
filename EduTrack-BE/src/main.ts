@@ -8,7 +8,7 @@ import { AppModule } from './app.module.js';
 import { HttpExceptionFilter } from './common/filters/http-exception.filter.js';
 
 type HelmetFactory = typeof import('helmet')['default'];
-const helmet = helmetModule.default as HelmetFactory;
+const helmet = helmetModule.default as unknown as HelmetFactory;
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
