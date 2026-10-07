@@ -7,8 +7,7 @@ import * as helmetModule from 'helmet';
 import { AppModule } from './app.module.js';
 import { HttpExceptionFilter } from './common/filters/http-exception.filter.js';
 
-type HelmetFactory = typeof import('helmet')['default'];
-const helmet = helmetModule.default as unknown as HelmetFactory;
+const helmet = helmetModule.default;
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
@@ -49,4 +48,4 @@ async function bootstrap() {
   await app.listen(config.get<number>('PORT', 3001));
 }
 
-await bootstrap();
+void bootstrap();
