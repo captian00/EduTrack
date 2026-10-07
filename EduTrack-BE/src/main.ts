@@ -7,7 +7,10 @@ import * as helmetModule from 'helmet';
 import { AppModule } from './app.module.js';
 import { HttpExceptionFilter } from './common/filters/http-exception.filter.js';
 
-const helmet = helmetModule.default;
+type HelmetFactory = typeof import('helmet')['default'];
+// Vercel resolves Helmet's conditional types differently from local tsc.
+// eslint-disable-next-line @typescript-eslint/no-unnecessary-type-assertion
+const helmet = helmetModule.default as unknown as HelmetFactory;
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
