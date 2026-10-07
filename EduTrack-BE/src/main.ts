@@ -2,10 +2,13 @@ import { ValidationPipe } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { NestFactory } from '@nestjs/core';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
-import helmet from 'helmet';
+import * as helmetModule from 'helmet';
 
 import { AppModule } from './app.module.js';
 import { HttpExceptionFilter } from './common/filters/http-exception.filter.js';
+
+type HelmetFactory = typeof import('helmet')['default'];
+const helmet = helmetModule.default as HelmetFactory;
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
