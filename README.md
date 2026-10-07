@@ -28,3 +28,32 @@ corepack pnpm dev
 ```
 
 Frontend chạy tại `http://localhost:3000`, Backend tại `http://localhost:3001`. Swagger có tại `http://localhost:3001/docs` trong môi trường không phải production.
+
+## Khởi tạo database
+
+Sau khi cấu hình connection string trong `EduTrack-BE/.env`:
+
+```bash
+cd EduTrack-BE
+corepack pnpm exec prisma migrate deploy
+corepack pnpm prisma:generate
+```
+
+## Tính năng v1
+
+- Supabase email/password authentication và protected dashboard.
+- Quản lý học sinh, lớp, enrollment và buổi học.
+- Điểm danh mobile-first, fee snapshot và học bù có liên kết buổi gốc.
+- Tổng hợp học phí, payment partial, phân bổ oldest-first và void có lý do.
+- Cấu hình ngân hàng, tạo VietQR và dashboard tổng hợp.
+
+## Kiểm tra chất lượng
+
+Chạy trong từng thư mục FE/BE:
+
+```bash
+corepack pnpm lint
+corepack pnpm typecheck
+corepack pnpm test
+corepack pnpm build
+```

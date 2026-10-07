@@ -18,6 +18,8 @@ describe('validateEnvironment', () => {
   });
 
   it('rejects a port outside the valid range', () => {
-    expect(() => validateEnvironment({ ...validEnvironment, PORT: '70000' })).toThrow();
+    expect(() =>
+      validateEnvironment({ ...validEnvironment, PORT: '70000' }),
+    ).toThrow();
   });
 });

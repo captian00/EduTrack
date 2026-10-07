@@ -27,6 +27,11 @@ enum PaymentMethod {
   OTHER
 }
 
+enum PaymentStatus {
+  CONFIRMED
+  VOIDED
+}
+
 model Student {
   id          String   @id @default(uuid()) @db.Uuid
   ownerId     String   @db.Uuid
@@ -42,6 +47,7 @@ model Student {
   enrollments Enrollment[]
   attendances Attendance[]
   payments    Payment[]
+  studentNotes StudentNote[]
 
   @@unique([ownerId, studentCode])
   @@index([ownerId, isActive])
@@ -98,9 +104,27 @@ model Lesson {
 
   class       Class        @relation(fields: [classId], references: [id], onDelete: Restrict)
   attendances Attendance[]
+  studentNotes StudentNote[]
 
   @@index([ownerId, lessonDate])
   @@index([ownerId, classId])
+}
+
+model StudentNote {
+  id        String   @id @default(uuid()) @db.Uuid
+  ownerId   String   @db.Uuid
+  studentId String   @db.Uuid
+  lessonId  String?  @db.Uuid
+  noteDate  DateTime @db.Date
+  content   String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  student Student @relation(fields: [studentId], references: [id], onDelete: Restrict)
+  lesson  Lesson? @relation(fields: [lessonId], references: [id], onDelete: Restrict)
+
+  @@index([ownerId, studentId, noteDate])
+  @@index([ownerId, lessonId, noteDate])
 }
 
 model Attendance {
@@ -112,12 +136,15 @@ model Attendance {
   feeAmount  Int
   isBillable Boolean
   note       String?
+  makeupForAttendanceId String? @unique @db.Uuid
   createdAt  DateTime         @default(now())
   updatedAt  DateTime         @updatedAt
 
   lesson     Lesson              @relation(fields: [lessonId], references: [id], onDelete: Restrict)
   student    Student             @relation(fields: [studentId], references: [id], onDelete: Restrict)
   allocations PaymentAllocation[]
+  makeupFor   Attendance?  @relation("AttendanceMakeup", fields: [makeupForAttendanceId], references: [id], onDelete: Restrict)
+  makeup      Attendance?  @relation("AttendanceMakeup")
 
   @@unique([lessonId, studentId])
   @@index([ownerId, studentId])
@@ -133,6 +160,9 @@ model Payment {
   method    PaymentMethod
   reference String?
   note      String?
+  status    PaymentStatus @default(CONFIRMED)
+  voidedAt  DateTime?
+  voidReason String?
   createdAt DateTime      @default(now())
   updatedAt DateTime      @updatedAt
 
@@ -167,7 +197,8 @@ model OwnerSettings {
   bankAccountName             String?
   billExcusedAbsence          Boolean  @default(false)
   billUnexcusedAbsence        Boolean  @default(true)
-  transferDescriptionTemplate String   @default("EDU {STUDENT_CODE} {YYYYMM}")
+  transferDescriptionTemplate String   @default("{STUDENT_NAME} học phí tháng {MMYYYY}, tổng số buổi học {LESSON_COUNT}, tổng tiền {TOTAL_AMOUNT}")
+  nextStudentNumber           Int      @default(1)
   createdAt                   DateTime @default(now())
   updatedAt                   DateTime @updatedAt
 }

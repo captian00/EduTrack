@@ -1,5 +1,11 @@
-import { FeaturePlaceholder } from '@/features/shared/feature-placeholder';
+import { Suspense } from 'react';
+import { StudentsScreen } from '@/features/students/components/students-screen';
+import { PageSkeleton } from '@/components/shared/loading';
 
 export default function StudentsPage() {
-  return <FeaturePlaceholder title="Học sinh" description="Quản lý hồ sơ, liên hệ, lớp học và lịch sử của học sinh." />;
+  return (
+    <Suspense fallback={<PageSkeleton />}>
+      <StudentsScreen />
+    </Suspense>
+  );
 }

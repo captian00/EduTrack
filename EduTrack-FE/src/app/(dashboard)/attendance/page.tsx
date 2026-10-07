@@ -1,5 +1,11 @@
-import { FeaturePlaceholder } from '@/features/shared/feature-placeholder';
+import { Suspense } from 'react';
+import { AttendanceScreen } from '@/features/attendance/attendance-screen';
+import { PageSkeleton } from '@/components/shared/loading';
 
 export default function AttendancePage() {
-  return <FeaturePlaceholder title="Điểm danh" description="Quy trình điểm danh nhanh, ưu tiên trải nghiệm trên điện thoại." />;
+  return (
+    <Suspense fallback={<PageSkeleton />}>
+      <AttendanceScreen />
+    </Suspense>
+  );
 }

@@ -1,5 +1,11 @@
-import { FeaturePlaceholder } from '@/features/shared/feature-placeholder';
+import { Suspense } from 'react';
+import { ClassesScreen } from '@/features/classes/classes-screen';
+import { PageSkeleton } from '@/components/shared/loading';
 
 export default function ClassesPage() {
-  return <FeaturePlaceholder title="Lớp học" description="Quản lý lớp, học phí mặc định và danh sách học sinh." />;
+  return (
+    <Suspense fallback={<PageSkeleton />}>
+      <ClassesScreen />
+    </Suspense>
+  );
 }

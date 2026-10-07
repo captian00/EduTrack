@@ -1,5 +1,11 @@
-import { FeaturePlaceholder } from '@/features/shared/feature-placeholder';
+import { Suspense } from 'react';
+import { LessonsScreen } from '@/features/lessons/lessons-screen';
+import { PageSkeleton } from '@/components/shared/loading';
 
 export default function LessonsPage() {
-  return <FeaturePlaceholder title="Buổi học" description="Tạo, lọc và cập nhật trạng thái các buổi dạy." />;
+  return (
+    <Suspense fallback={<PageSkeleton />}>
+      <LessonsScreen />
+    </Suspense>
+  );
 }

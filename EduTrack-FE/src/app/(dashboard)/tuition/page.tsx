@@ -1,5 +1,11 @@
-import { FeaturePlaceholder } from '@/features/shared/feature-placeholder';
+import { Suspense } from 'react';
+import { TuitionScreen } from '@/features/tuition/tuition-screen';
+import { PageSkeleton } from '@/components/shared/loading';
 
 export default function TuitionPage() {
-  return <FeaturePlaceholder title="Học phí" description="Theo dõi khoản phải thu, đã thu và công nợ còn lại." />;
+  return (
+    <Suspense fallback={<PageSkeleton />}>
+      <TuitionScreen />
+    </Suspense>
+  );
 }

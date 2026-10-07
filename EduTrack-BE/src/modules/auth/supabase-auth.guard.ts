@@ -1,4 +1,9 @@
-import { CanActivate, ExecutionContext, Injectable, UnauthorizedException } from '@nestjs/common';
+import {
+  CanActivate,
+  ExecutionContext,
+  Injectable,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Reflector } from '@nestjs/core';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
@@ -43,7 +48,8 @@ export class SupabaseAuthGuard implements CanActivate {
     if (!token) throw new UnauthorizedException('Missing bearer token');
 
     const { data, error } = await this.supabase.auth.getUser(token);
-    if (error || !data.user) throw new UnauthorizedException('Invalid or expired token');
+    if (error || !data.user)
+      throw new UnauthorizedException('Invalid or expired token');
 
     request.user = data.user;
     return true;
