@@ -1,5 +1,19 @@
 import axios from 'axios';
+import { toast } from 'sonner';
 import { createClient } from '@/lib/supabase/client';
+
+function apiErrorMessage(error: unknown) {
+  if (!axios.isAxiosError(error)) return 'Đã xảy ra lỗi. Vui lòng thử lại.';
+  const data = error.response?.data as
+    | { message?: string | string[]; error?: string }
+    | undefined;
+  if (Array.isArray(data?.message)) return data.message.join(', ');
+  if (typeof data?.message === 'string') return data.message;
+  if (typeof data?.error === 'string') return data.error;
+  if (!error.response)
+    return 'Không thể kết nối đến máy chủ. Vui lòng kiểm tra kết nối.';
+  return 'Yêu cầu không thành công. Vui lòng thử lại.';
+}
 
 export const apiClient = axios.create({
   baseURL:
@@ -28,6 +42,8 @@ apiClient.interceptors.response.use(
     ) {
       await createClient().auth.signOut();
       window.location.replace('/login');
+    } else if (typeof window !== 'undefined' && !axios.isCancel(error)) {
+      toast.error(apiErrorMessage(error));
     }
     return Promise.reject(error);
   },

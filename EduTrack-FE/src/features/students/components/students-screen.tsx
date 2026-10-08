@@ -101,7 +101,6 @@ export function StudentsScreen() {
       form.reset(emptyForm);
       await queryClient.invalidateQueries({ queryKey: studentKeys.all });
     },
-    onError: () => toast.error('Không thể lưu học sinh. Vui lòng thử lại.'),
   });
   const toggle = useMutation({
     mutationFn: (student: Student) =>
@@ -111,7 +110,6 @@ export function StudentsScreen() {
       setStatusTarget(undefined);
       await queryClient.invalidateQueries({ queryKey: studentKeys.all });
     },
-    onError: () => toast.error('Không thể cập nhật trạng thái.'),
   });
   const open = (student: Student | null) => {
     setEditing(student);

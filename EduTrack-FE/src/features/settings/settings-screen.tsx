@@ -88,8 +88,6 @@ export function SettingsScreen() {
       toast.success('Đã lưu cài đặt');
       await client.invalidateQueries({ queryKey: ['settings'] });
     },
-    onError: () =>
-      toast.error('Không thể lưu cài đặt. Vui lòng kiểm tra lại thông tin.'),
   });
   if (query.isPending) return <PageSkeleton variant="form" />;
   return (

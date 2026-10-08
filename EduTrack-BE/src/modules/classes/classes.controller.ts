@@ -12,11 +12,13 @@ import type { User } from '@supabase/supabase-js';
 import { CurrentUser } from '../auth/current-user.decorator.js';
 import { ClassesService } from './classes.service.js';
 import {
+  BulkCreateEnrollmentDto,
   CreateClassDto,
   CreateEnrollmentDto,
   EndEnrollmentDto,
   QueryClassesDto,
   UpdateClassDto,
+  UpdateEnrollmentDto,
 } from './dto/class.dto.js';
 @ApiTags('classes')
 @ApiBearerAuth()
@@ -46,6 +48,13 @@ export class ClassesController {
   ) {
     return this.classes.enroll(user.id, id, input);
   }
+  @Post(':id/enrollments/bulk') bulkEnroll(
+    @CurrentUser() user: User,
+    @Param('id') id: string,
+    @Body() input: BulkCreateEnrollmentDto,
+  ) {
+    return this.classes.bulkEnroll(user.id, id, input);
+  }
   @Patch(':id/enrollments/:enrollmentId/end') end(
     @CurrentUser() user: User,
     @Param('id') id: string,
@@ -53,5 +62,13 @@ export class ClassesController {
     @Body() input: EndEnrollmentDto,
   ) {
     return this.classes.endEnrollment(user.id, id, enrollmentId, input);
+  }
+  @Patch(':id/enrollments/:enrollmentId') updateEnrollment(
+    @CurrentUser() user: User,
+    @Param('id') id: string,
+    @Param('enrollmentId') enrollmentId: string,
+    @Body() input: UpdateEnrollmentDto,
+  ) {
+    return this.classes.updateEnrollment(user.id, id, enrollmentId, input);
   }
 }

@@ -2,6 +2,9 @@ import { PartialType } from '@nestjs/swagger';
 import { Transform, Type } from 'class-transformer';
 import {
   IsBoolean,
+  ArrayMaxSize,
+  ArrayMinSize,
+  IsArray,
   IsDateString,
   IsInt,
   IsOptional,
@@ -35,6 +38,19 @@ export class CreateEnrollmentDto {
   @IsOptional() @IsDateString() endDate?: string;
   @IsOptional() @Type(() => Number) @IsInt() @Min(0) feePerSession?: number;
 }
+export class BulkCreateEnrollmentDto {
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(100)
+  @IsUUID('4', { each: true })
+  studentIds!: string[];
+  @IsDateString() startDate!: string;
+  @IsOptional() @IsDateString() endDate?: string;
+  @IsOptional() @Type(() => Number) @IsInt() @Min(0) feePerSession?: number;
+}
 export class EndEnrollmentDto {
   @IsDateString() endDate!: string;
+}
+export class UpdateEnrollmentDto {
+  @IsDateString() startDate!: string;
 }

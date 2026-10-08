@@ -6,12 +6,19 @@ import { useEffect } from 'react';
 import { toast } from 'sonner';
 import { PageHeader } from '@/components/shared/page-header';
 import { PageSkeleton } from '@/components/shared/loading';
+import { DatePicker } from '@/components/shared/date-range-picker';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { CurrencyInput } from '@/components/ui/currency-input';
 import { Card } from '@/components/ui/card';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@/components/ui/popover';
 import {
   Select,
   SelectContent,
@@ -50,6 +57,11 @@ type ClassDetail = ClassItem & {
   }[];
 };
 const money = new Intl.NumberFormat('vi-VN');
+const localDate = () => {
+  const date = new Date();
+  const offset = date.getTimezoneOffset() * 60_000;
+  return new Date(date.getTime() - offset).toISOString().slice(0, 10);
+};
 
 export function ClassesScreen() {
   const params = useListParams();
@@ -70,7 +82,12 @@ export function ClassesScreen() {
   const [selectedId, setSelectedId] = useState<string>();
   const [name, setName] = useState('');
   const [fee, setFee] = useState('');
-  const [studentId, setStudentId] = useState('');
+  const [studentIds, setStudentIds] = useState<string[]>([]);
+  const [enrollmentStartDate, setEnrollmentStartDate] = useState(localDate);
+  const [editingEnrollment, setEditingEnrollment] = useState<{
+    id: string;
+    startDate: string;
+  }>();
   const classParams = {
     search: params.get('search') || undefined,
     isActive: activeParam || undefined,
@@ -122,13 +139,25 @@ export function ClassesScreen() {
   });
   const enroll = useMutation({
     mutationFn: () =>
-      apiClient.post(`/classes/${selectedId}/enrollments`, {
-        studentId,
-        startDate: new Date().toISOString().slice(0, 10),
+      apiClient.post(`/classes/${selectedId}/enrollments/bulk`, {
+        studentIds,
+        startDate: enrollmentStartDate,
       }),
     onSuccess: async () => {
-      toast.success('Đã thêm học sinh vào lớp');
-      setStudentId('');
+      toast.success(`Đã thêm ${studentIds.length} học sinh vào lớp`);
+      setStudentIds([]);
+      setEnrollmentStartDate(localDate());
+      await refresh();
+    },
+  });
+  const updateEnrollment = useMutation({
+    mutationFn: ({ id, startDate }: { id: string; startDate: string }) =>
+      apiClient.patch(`/classes/${selectedId}/enrollments/${id}`, {
+        startDate,
+      }),
+    onSuccess: async () => {
+      toast.success('Đã cập nhật ngày bắt đầu');
+      setEditingEnrollment(undefined);
       await refresh();
     },
   });
@@ -273,24 +302,93 @@ export function ClassesScreen() {
               event.preventDefault();
               enroll.mutate();
             }}
-            className="mt-4 flex flex-wrap gap-3"
+            className="mt-4 grid gap-3 sm:grid-cols-[1fr_180px_auto] sm:items-end"
           >
-            <Select value={studentId} onValueChange={setStudentId}>
-              <SelectTrigger className="mt-0 flex-1">
-                <SelectValue placeholder="Chọn học sinh" />
-              </SelectTrigger>
-              <SelectContent>
-                {students.data
-                  ?.filter((item) => item.isActive)
-                  .map((student) => (
-                    <SelectItem key={student.id} value={student.id}>
-                      {student.studentCode} — {student.fullName}
-                    </SelectItem>
-                  ))}
-              </SelectContent>
-            </Select>
-            <Button disabled={!studentId} loading={enroll.isPending}>
-              Thêm vào lớp
+            <label className="text-sm font-medium">
+              Học sinh
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="mt-2 w-full justify-start font-medium"
+                  >
+                    {studentIds.length
+                      ? `Đã chọn ${studentIds.length} học sinh`
+                      : 'Chọn học sinh'}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent
+                  align="start"
+                  className="w-[min(92vw,480px)] p-3"
+                >
+                  <div className="mb-2 flex items-center justify-between border-b border-slate-100 pb-2">
+                    <p className="text-sm font-semibold">Chọn nhiều học sinh</p>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => {
+                        const activeIds =
+                          students.data
+                            ?.filter((item) => item.isActive)
+                            .map((item) => item.id) ?? [];
+                        setStudentIds(
+                          studentIds.length === activeIds.length
+                            ? []
+                            : activeIds,
+                        );
+                      }}
+                    >
+                      {studentIds.length ===
+                      (students.data?.filter((item) => item.isActive).length ??
+                        0)
+                        ? 'Bỏ chọn tất cả'
+                        : 'Chọn tất cả'}
+                    </Button>
+                  </div>
+                  <div className="max-h-72 space-y-1 overflow-y-auto">
+                    {students.data
+                      ?.filter((item) => item.isActive)
+                      .map((student) => {
+                        const checked = studentIds.includes(student.id);
+                        return (
+                          <label
+                            key={student.id}
+                            className="flex cursor-pointer items-center gap-3 rounded-xl px-3 py-2 text-sm hover:bg-slate-50"
+                          >
+                            <Checkbox
+                              checked={checked}
+                              onCheckedChange={(value) =>
+                                setStudentIds((current) =>
+                                  value
+                                    ? [...current, student.id]
+                                    : current.filter((id) => id !== student.id),
+                                )
+                              }
+                            />
+                            <span>
+                              {student.studentCode} — {student.fullName}
+                            </span>
+                          </label>
+                        );
+                      })}
+                  </div>
+                </PopoverContent>
+              </Popover>
+            </label>
+            <label className="text-sm font-medium">
+              Ngày bắt đầu
+              <DatePicker
+                value={enrollmentStartDate}
+                onChange={setEnrollmentStartDate}
+              />
+            </label>
+            <Button
+              disabled={!studentIds.length || !enrollmentStartDate}
+              loading={enroll.isPending}
+            >
+              Thêm {studentIds.length || ''} vào lớp
             </Button>
           </form>
           <div className="mt-4 divide-y">
@@ -308,18 +406,64 @@ export function ClassesScreen() {
                     {new Date(value.startDate).toLocaleDateString('vi-VN')}
                   </p>
                 </div>
-                {value.isActive && (
-                  <Button
-                    size="sm"
-                    variant="dangerOutline"
-                    onClick={() =>
-                      setConfirmAction({ kind: 'enrollment', id: value.id })
-                    }
-                    className="text-rose-600"
-                  >
-                    Kết thúc
-                  </Button>
-                )}
+                <div className="flex flex-wrap items-end justify-end gap-2">
+                  {editingEnrollment?.id === value.id ? (
+                    <>
+                      <label className="w-full text-xs font-medium text-slate-600 sm:w-44">
+                        Ngày bắt đầu
+                        <DatePicker
+                          value={editingEnrollment.startDate}
+                          onChange={(startDate) =>
+                            setEditingEnrollment({
+                              id: value.id,
+                              startDate,
+                            })
+                          }
+                        />
+                      </label>
+                      <Button
+                        disabled={!editingEnrollment.startDate}
+                        loading={updateEnrollment.isPending}
+                        onClick={() =>
+                          updateEnrollment.mutate(editingEnrollment)
+                        }
+                      >
+                        Lưu
+                      </Button>
+                      <Button
+                        variant="outline"
+                        onClick={() => setEditingEnrollment(undefined)}
+                      >
+                        Hủy
+                      </Button>
+                    </>
+                  ) : (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() =>
+                        setEditingEnrollment({
+                          id: value.id,
+                          startDate: value.startDate.slice(0, 10),
+                        })
+                      }
+                    >
+                      Sửa ngày bắt đầu
+                    </Button>
+                  )}
+                  {value.isActive && editingEnrollment?.id !== value.id && (
+                    <Button
+                      size="sm"
+                      variant="dangerOutline"
+                      onClick={() =>
+                        setConfirmAction({ kind: 'enrollment', id: value.id })
+                      }
+                      className="text-rose-600"
+                    >
+                      Kết thúc
+                    </Button>
+                  )}
+                </div>
               </div>
             ))}
           </div>

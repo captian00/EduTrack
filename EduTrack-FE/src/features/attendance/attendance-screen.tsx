@@ -145,7 +145,6 @@ function AttendanceForm({
         client.invalidateQueries({ queryKey: studentNoteKeys.all }),
       ]);
     },
-    onError: () => toast.error('Không thể lưu điểm danh'),
   });
   const update = (studentId: string, patch: Partial<Draft[string]>) =>
     setDraft((value) => ({

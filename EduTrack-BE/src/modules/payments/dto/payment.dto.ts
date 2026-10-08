@@ -3,6 +3,7 @@ import {
   IsDateString,
   IsEnum,
   IsInt,
+  Matches,
   IsOptional,
   IsString,
   IsUUID,
@@ -19,6 +20,8 @@ export class CreatePaymentDto {
   @IsEnum(PaymentMethod) method!: PaymentMethod;
   @IsOptional() @IsString() @MaxLength(120) reference?: string;
   @IsOptional() @IsString() @MaxLength(500) note?: string;
+  @IsOptional() @Matches(/^\d{4}-(0[1-9]|1[0-2])$/) billingMonth?: string;
+  @IsOptional() @IsUUID() classId?: string;
 }
 export class VoidPaymentDto {
   @IsString() @MinLength(3) @MaxLength(500) reason!: string;

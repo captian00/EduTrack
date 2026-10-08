@@ -64,9 +64,11 @@ export class PaymentsService {
       where: { id: input.studentId, ownerId },
     });
     if (!student) throw new NotFoundException('Student not found');
+    const scope = this.paymentScope(input);
     const charges = await this.prisma.$transaction((tx) =>
-      this.tuition.outstandingCharges(tx, ownerId, input.studentId),
+      this.tuition.outstandingCharges(tx, ownerId, input.studentId, scope),
     );
+    this.validateScopedAmount(charges, input.amount, scope);
     return {
       student,
       amount: input.amount,
@@ -82,15 +84,19 @@ export class PaymentsService {
           }))
         )
           throw new NotFoundException('Student not found');
+        const scope = this.paymentScope(input);
         const charges = await this.tuition.outstandingCharges(
           tx,
           ownerId,
           input.studentId,
+          scope,
         );
         const total = charges.reduce(
           (sum, value) => sum + value.outstanding,
           0,
         );
+        if (scope && input.amount !== total)
+          throw new ConflictException('PAYMENT_AMOUNT_MISMATCH');
         if (input.amount > total)
           throw new ConflictException('PAYMENT_OVER_ALLOCATION');
         const allocations = this.allocate(charges, input.amount);
@@ -144,5 +150,23 @@ export class PaymentsService {
     const total = charges.reduce((sum, item) => sum + item.outstanding, 0);
     if (amount > total) throw new ConflictException('PAYMENT_OVER_ALLOCATION');
     return allocateOldestFirst(charges, amount);
+  }
+  private paymentScope(input: CreatePaymentDto) {
+    if (Boolean(input.billingMonth) !== Boolean(input.classId))
+      throw new BadRequestException('PAYMENT_SCOPE_INCOMPLETE');
+    return input.billingMonth && input.classId
+      ? { billingMonth: input.billingMonth, classId: input.classId }
+      : undefined;
+  }
+  private validateScopedAmount(
+    charges: { outstanding: number }[],
+    amount: number,
+    scope?: { billingMonth: string; classId: string },
+  ) {
+    if (!scope) return;
+    const total = charges.reduce((sum, item) => sum + item.outstanding, 0);
+    if (total === 0) throw new BadRequestException('PAYMENT_SCOPE_EMPTY');
+    if (amount !== total)
+      throw new ConflictException('PAYMENT_AMOUNT_MISMATCH');
   }
 }

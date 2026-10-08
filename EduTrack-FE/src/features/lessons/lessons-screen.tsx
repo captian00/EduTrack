@@ -126,12 +126,6 @@ export function LessonsScreen() {
       setEditingId(undefined);
       await client.invalidateQueries({ queryKey: ['lessons'] });
     },
-    onError: (error: { response?: { data?: { code?: string } } }) =>
-      toast.error(
-        error.response?.data?.code === 'LESSON_ALREADY_EXISTS'
-          ? 'Lớp đã có buổi học vào ngày và giờ này.'
-          : 'Không thể lưu buổi học.',
-      ),
   });
   const cancel = async (id: string) => {
     await apiClient.post(`/lessons/${id}/cancel`);

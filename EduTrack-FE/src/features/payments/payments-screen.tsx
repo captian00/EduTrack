@@ -1,7 +1,8 @@
 'use client';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { toPng } from 'html-to-image';
 import Image from 'next/image';
-import { useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { PageHeader } from '@/components/shared/page-header';
 import { PageSkeleton } from '@/components/shared/loading';
@@ -15,7 +16,6 @@ import {
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card } from '@/components/ui/card';
-import { CurrencyInput } from '@/components/ui/currency-input';
 import {
   Table,
   TableBody,
@@ -43,6 +43,13 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
+import {
+  billingClasses,
+  billingMonths,
+  outstandingTuitionItems,
+  selectedPeriodItems,
+  type TuitionItem,
+} from './payment-periods';
 type Summary = {
   items: {
     student: { id: string; fullName: string; studentCode: string };
@@ -63,6 +70,21 @@ type Qr = {
   description: string;
   fullDescription: string;
   amount: number;
+  billingMonth?: string;
+  monthLabel: string;
+  teacherName: string | null;
+  classId?: string;
+  className?: string;
+  student: { id: string; studentCode: string; fullName: string };
+  feePerSession: number | null;
+  lessonCount: number;
+  lessonDates: string[];
+  bankCode: string;
+  bankAccountNumber: string;
+  bankAccountName: string | null;
+};
+type TuitionDetail = {
+  items: TuitionItem[];
 };
 type Preview = { allocations: { attendanceId: string; amount: number }[] };
 const money = formatCurrency;
@@ -70,9 +92,12 @@ export function PaymentsScreen() {
   const params = useListParams();
   const client = useQueryClient();
   const [studentId, setStudentId] = useState('');
-  const [amount, setAmount] = useState('');
+  const [billingMonth, setBillingMonth] = useState('');
+  const [classId, setClassId] = useState('');
   const [method, setMethod] = useState('BANK_TRANSFER');
   const [qr, setQr] = useState<Qr>();
+  const [isDownloading, setIsDownloading] = useState(false);
+  const receiptRef = useRef<HTMLElement>(null);
   const [preview, setPreview] = useState<Preview>();
   const [voidId, setVoidId] = useState<string>();
   const [voidReason, setVoidReason] = useState('');
@@ -103,6 +128,33 @@ export function PaymentsScreen() {
         })
       ).data,
   });
+  const tuitionDetail = useQuery({
+    queryKey: ['tuition', 'student', studentId],
+    queryFn: async () =>
+      (await apiClient.get<TuitionDetail>(`/tuition/students/${studentId}`))
+        .data,
+    enabled: Boolean(studentId),
+  });
+  const outstandingItems = useMemo(
+    () => outstandingTuitionItems(tuitionDetail.data?.items ?? []),
+    [tuitionDetail.data],
+  );
+  const months = useMemo(
+    () => billingMonths(outstandingItems),
+    [outstandingItems],
+  );
+  const classes = useMemo(
+    () => billingClasses(outstandingItems, billingMonth),
+    [billingMonth, outstandingItems],
+  );
+  const selectedItems = useMemo(
+    () => selectedPeriodItems(outstandingItems, billingMonth, classId),
+    [billingMonth, classId, outstandingItems],
+  );
+  const selectedAmount = selectedItems.reduce(
+    (sum, item) => sum + item.outstanding,
+    0,
+  );
   const paymentParams = {
     studentId: filterStudentId || undefined,
     status: filterStatus || undefined,
@@ -127,14 +179,16 @@ export function PaymentsScreen() {
     mutationFn: () =>
       apiClient.post('/payments', {
         studentId,
-        amount: Number(amount),
+        amount: selectedAmount,
         paidAt: new Date().toISOString(),
         method,
+        billingMonth,
+        classId,
       }),
     onSuccess: async () => {
       toast.success('Đã ghi nhận thanh toán');
-      setAmount('');
       setPreview(undefined);
+      setQr(undefined);
       await Promise.all([
         client.invalidateQueries({ queryKey: ['payments'] }),
         client.invalidateQueries({ queryKey: ['tuition'] }),
@@ -147,15 +201,15 @@ export function PaymentsScreen() {
         (
           await apiClient.post<Preview>('/payments/preview', {
             studentId,
-            amount: Number(amount),
+            amount: selectedAmount,
             paidAt: new Date().toISOString(),
             method,
+            billingMonth,
+            classId,
           })
         ).data,
       );
-    } catch {
-      toast.error('Số tiền không hợp lệ hoặc vượt công nợ.');
-    }
+    } catch {}
   };
   const generateQr = async () => {
     try {
@@ -163,12 +217,59 @@ export function PaymentsScreen() {
         (
           await apiClient.post<Qr>('/qr-payments/generate', {
             studentId,
-            amount: Number(amount),
+            amount: selectedAmount,
+            billingMonth,
+            classId,
           })
         ).data,
       );
+    } catch {}
+  };
+  const downloadReceipt = async () => {
+    if (!receiptRef.current || !qr) return;
+    setIsDownloading(true);
+    try {
+      await document.fonts?.ready;
+      await Promise.all(
+        [...receiptRef.current.querySelectorAll('img')].map(async (image) => {
+          if (!image.complete) {
+            await new Promise<void>((resolve, reject) => {
+              image.addEventListener('load', () => resolve(), { once: true });
+              image.addEventListener('error', () => reject(), { once: true });
+            });
+          }
+          await image.decode().catch(() => undefined);
+        }),
+      );
+      const receipt = receiptRef.current;
+      const width = Math.ceil(receipt.getBoundingClientRect().width);
+      const height = Math.ceil(receipt.getBoundingClientRect().height);
+      const dataUrl = await toPng(receipt, {
+        cacheBust: true,
+        pixelRatio: 2,
+        backgroundColor: '#ffffff',
+        width,
+        height,
+        style: {
+          margin: '0',
+          maxWidth: 'none',
+          width: `${width}px`,
+        },
+      });
+      const link = document.createElement('a');
+      const safeClassName = (qr.className ?? 'lop-hoc')
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/[^a-zA-Z0-9]+/g, '-')
+        .replace(/^-|-$/g, '')
+        .toLowerCase();
+      link.download = `${qr.student.studentCode}-${safeClassName}-${qr.billingMonth ?? 'hoc-phi'}.png`;
+      link.href = dataUrl;
+      link.click();
     } catch {
-      toast.error('Không thể tạo QR. Kiểm tra cài đặt ngân hàng và công nợ.');
+      toast.error('Không thể tải phiếu. Vui lòng thử lại.');
+    } finally {
+      setIsDownloading(false);
     }
   };
   const voidPayment = async () => {
@@ -198,7 +299,7 @@ export function PaymentsScreen() {
           e.preventDefault();
           void previewPayment();
         }}
-        className="grid gap-4 rounded-2xl border bg-white p-5 shadow-sm sm:grid-cols-3 sm:items-end"
+        className="grid gap-4 rounded-2xl border bg-white p-5 shadow-sm sm:grid-cols-2 sm:items-end lg:grid-cols-5"
       >
         <label className="text-sm font-medium">
           Học sinh
@@ -206,7 +307,10 @@ export function PaymentsScreen() {
             value={studentId}
             onValueChange={(value) => {
               setStudentId(value);
+              setBillingMonth('');
+              setClassId('');
               setPreview(undefined);
+              setQr(undefined);
             }}
           >
             <SelectTrigger>
@@ -224,16 +328,57 @@ export function PaymentsScreen() {
           </Select>
         </label>
         <label className="text-sm font-medium">
-          Số tiền
-          <CurrencyInput
-            value={amount}
+          Tháng học phí
+          <Select
+            value={billingMonth}
             onValueChange={(value) => {
-              setAmount(value);
+              setBillingMonth(value);
+              setClassId('');
               setPreview(undefined);
+              setQr(undefined);
             }}
-            required
-            className="mt-2"
-          />
+            disabled={!studentId || tuitionDetail.isPending}
+          >
+            <SelectTrigger>
+              <SelectValue placeholder="Chọn tháng" />
+            </SelectTrigger>
+            <SelectContent>
+              {months.map((month) => (
+                <SelectItem key={month} value={month}>
+                  Tháng {Number(month.slice(5, 7))}/{month.slice(0, 4)}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </label>
+        <label className="text-sm font-medium">
+          Lớp học
+          <Select
+            value={classId}
+            onValueChange={(value) => {
+              setClassId(value);
+              setPreview(undefined);
+              setQr(undefined);
+            }}
+            disabled={!billingMonth}
+          >
+            <SelectTrigger>
+              <SelectValue placeholder="Chọn lớp" />
+            </SelectTrigger>
+            <SelectContent>
+              {classes.map((item) => (
+                <SelectItem key={item.id} value={item.id}>
+                  {item.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </label>
+        <label className="text-sm font-medium">
+          Tổng học phí
+          <div className="mt-2 flex min-h-11 items-center rounded-xl border border-slate-200 bg-slate-50 px-4 font-bold text-slate-800 tabular-nums">
+            {selectedAmount ? money(selectedAmount) : '—'}
+          </div>
         </label>
         <label className="text-sm font-medium">
           Phương thức
@@ -248,15 +393,18 @@ export function PaymentsScreen() {
             </SelectContent>
           </Select>
         </label>
-        <div className="flex flex-col-reverse gap-2 border-t border-slate-100 pt-4 sm:col-span-3 sm:flex-row sm:justify-end">
-          <Button className="w-full sm:w-auto" disabled={!studentId || !amount}>
+        <div className="flex flex-col-reverse gap-2 border-t border-slate-100 pt-4 sm:col-span-2 sm:flex-row sm:justify-end lg:col-span-5">
+          <Button
+            className="w-full sm:w-auto"
+            disabled={!studentId || !billingMonth || !classId || !selectedAmount}
+          >
             Ghi nhận thanh toán
           </Button>
           <Button
             type="button"
             onClick={generateQr}
             variant="outline"
-            disabled={!studentId || !amount}
+            disabled={!studentId || !billingMonth || !classId || !selectedAmount}
             className="w-full sm:w-auto"
           >
             Tạo mã QR
@@ -287,36 +435,123 @@ export function PaymentsScreen() {
         </section>
       )}
       {qr && (
-        <section className="rounded-2xl border bg-white p-5 text-center">
-          <Image
-            src={qr.imageUrl}
-            alt="Mã VietQR thanh toán"
-            width={256}
-            height={256}
-            unoptimized
-            className="mx-auto size-64"
-          />
-          <p className="mt-3 font-semibold">{money(qr.amount)}</p>
-          <dl className="mx-auto mt-4 max-w-xl space-y-3 text-left text-sm">
-            <div className="rounded-xl bg-slate-50 p-3">
-              <dt className="font-semibold text-slate-700">
-                Nội dung trong QR
-              </dt>
-              <dd className="mt-1 break-words text-slate-600">
-                {qr.description}
-              </dd>
+        <div className="space-y-3">
+          <section
+            ref={receiptRef}
+            className="mx-auto w-full max-w-5xl overflow-hidden rounded-2xl border border-teal-200 bg-white text-slate-800 shadow-sm"
+          >
+            <header className="bg-gradient-to-br from-teal-500 to-cyan-500 px-5 py-5 text-center text-white md:px-8 md:py-6">
+              <p className="text-xs font-semibold tracking-[0.18em] uppercase">
+                {qr.teacherName || 'EduTrack'} · {qr.className || 'Lớp học'}
+              </p>
+              <h2 className="mt-2 text-2xl font-bold tracking-wide">
+                PHIẾU HỌC PHÍ
+              </h2>
+              <p className="mt-1 text-sm font-medium text-teal-50">
+                {qr.monthLabel}
+              </p>
+            </header>
+
+            <div className="grid gap-6 p-5 md:grid-cols-[minmax(0,1fr)_320px] md:p-8">
+              <div className="min-w-0">
+                <dl className="divide-y divide-dashed divide-slate-200 text-sm">
+                <div className="flex items-center justify-between gap-4 py-2">
+                  <dt className="text-slate-500">🎓 Học sinh</dt>
+                  <dd className="text-right font-semibold">
+                    {qr.student.fullName}
+                  </dd>
+                </div>
+                <div className="flex items-center justify-between gap-4 py-2">
+                  <dt className="text-slate-500">💎 Học phí / buổi</dt>
+                  <dd className="text-right font-semibold tabular-nums">
+                    {qr.feePerSession === null
+                      ? 'Nhiều mức'
+                      : money(qr.feePerSession)}
+                  </dd>
+                </div>
+                <div className="flex items-center justify-between gap-4 py-2">
+                  <dt className="text-slate-500">📝 Số buổi học</dt>
+                  <dd className="text-right font-semibold">
+                    {qr.lessonCount} buổi
+                  </dd>
+                </div>
+                </dl>
+
+              <div className="mt-3 rounded-2xl border-2 border-teal-200 bg-teal-50/70 px-4 py-4 text-center">
+                <p className="text-xs font-semibold tracking-wide text-slate-500 uppercase">
+                  Tổng học phí
+                </p>
+                <p className="mt-1 text-3xl font-extrabold text-teal-700 tabular-nums">
+                  {money(qr.amount)}
+                </p>
+              </div>
+
+                <div className="mt-5 text-center md:text-left">
+                <p className="text-[11px] font-semibold tracking-wide text-slate-500 uppercase">
+                  Ngày đi học
+                </p>
+                  <div className="mt-2 flex flex-wrap justify-center gap-1.5 md:justify-start">
+                  {qr.lessonDates.map((date, index) => {
+                    const [year, month, day] = date.slice(0, 10).split('-');
+                    return (
+                      <span
+                        key={`${date}-${index}`}
+                        className="rounded-md border border-teal-200 bg-teal-50 px-2 py-1 text-xs font-bold text-teal-700"
+                      >
+                        {day}/{month}
+                        <span className="sr-only">/{year}</span>
+                      </span>
+                    );
+                  })}
+                  </div>
+                </div>
+                <div className="mt-5 rounded-xl bg-slate-50 p-4 text-left text-sm text-slate-600">
+                  <p className="font-semibold text-slate-700">
+                    Thông tin học phí
+                  </p>
+                  <p className="mt-1 break-words">{qr.fullDescription}</p>
+                </div>
+              </div>
+
+              <div className="mx-auto min-w-0 w-full max-w-[320px] self-start overflow-hidden rounded-2xl border-2 border-dashed border-teal-400 p-4 text-center">
+                <p className="text-xs font-bold tracking-wide text-teal-700 uppercase">
+                  Mã thanh toán
+                </p>
+                <Image
+                  src={qr.imageUrl}
+                  alt="Mã VietQR thanh toán"
+                  width={256}
+                  height={256}
+                  unoptimized
+                  crossOrigin="anonymous"
+                  className="mx-auto mt-1 h-auto w-full max-w-56 object-contain"
+                />
+                <p className="mt-2 break-all text-sm font-bold text-rose-600">
+                  {qr.bankCode} · {qr.bankAccountNumber}
+                </p>
+                {qr.bankAccountName && (
+                  <p className="mt-0.5 text-xs font-semibold text-slate-600 uppercase">
+                    {qr.bankAccountName}
+                  </p>
+                )}
+                <p className="mt-2 break-words text-xs text-slate-500">
+                  Nội dung: {qr.description}
+                </p>
+              </div>
+
             </div>
-            <div className="rounded-xl bg-indigo-50 p-3">
-              <dt className="font-semibold text-indigo-800">Nội dung đầy đủ</dt>
-              <dd className="mt-1 break-words text-indigo-700">
-                {qr.fullDescription}
-              </dd>
-            </div>
-          </dl>
-          <p className="mt-3 text-sm text-amber-700">
-            Tạo QR không tự xác nhận thanh toán.
-          </p>
-        </section>
+          </section>
+          <div className="flex justify-center">
+            <Button
+              type="button"
+              variant="outline"
+              loading={isDownloading}
+              onClick={() => void downloadReceipt()}
+            >
+              Tải phiếu PNG
+            </Button>
+          </div>
+        </div>
       )}
       <FilterPanel
         activeCount={

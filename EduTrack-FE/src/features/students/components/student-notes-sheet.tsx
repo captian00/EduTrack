@@ -62,7 +62,6 @@ export function StudentNotesSheet({
       toast.success('Đã thêm ghi chú');
       await refresh();
     },
-    onError: () => toast.error('Không thể thêm ghi chú.'),
   });
   const update = useMutation({
     mutationFn: () =>

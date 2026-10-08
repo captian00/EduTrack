@@ -69,7 +69,6 @@ export function LessonDetailSheet({
         client.invalidateQueries({ queryKey: studentNoteKeys.all }),
       ]);
     },
-    onError: () => toast.error('Không thể thêm ghi chú.'),
   });
   const close = () => {
     setStudentId(undefined);

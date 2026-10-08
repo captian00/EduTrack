@@ -111,11 +111,30 @@ export class TuitionService {
     tx: Prisma.TransactionClient,
     ownerId: string,
     studentId: string,
+    scope?: { billingMonth: string; classId: string },
   ) {
+    const monthStart = scope
+      ? new Date(`${scope.billingMonth}-01T00:00:00.000Z`)
+      : undefined;
+    const monthEnd = monthStart
+      ? new Date(Date.UTC(monthStart.getUTCFullYear(), monthStart.getUTCMonth() + 1, 1))
+      : undefined;
     const charges = await tx.attendance.findMany({
-      where: { ownerId, studentId, isBillable: true },
+      where: {
+        ownerId,
+        studentId,
+        isBillable: true,
+        ...(scope
+          ? {
+              lesson: {
+                classId: scope.classId,
+                lessonDate: { gte: monthStart, lt: monthEnd },
+              },
+            }
+          : {}),
+      },
       include: {
-        lesson: true,
+        lesson: { include: { class: true } },
         allocations: {
           where: { payment: { status: PaymentStatus.CONFIRMED } },
         },
@@ -126,6 +145,9 @@ export class TuitionService {
       .map((charge) => ({
         attendanceId: charge.id,
         lessonDate: charge.lesson.lessonDate,
+        classId: charge.lesson.classId,
+        className: charge.lesson.class.name,
+        feeAmount: charge.feeAmount,
         outstanding:
           charge.feeAmount -
           charge.allocations.reduce((sum, value) => sum + value.amount, 0),
