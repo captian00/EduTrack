@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import { Manrope } from 'next/font/google';
+import { Analytics } from '@vercel/analytics/next';
 import './globals.css';
 import { AppProviders } from '@/lib/query/app-providers';
 
@@ -20,6 +21,7 @@ export default function RootLayout({
     <html lang="vi" className={`${manrope.variable} h-full antialiased`}>
       <body className="flex min-h-full flex-col">
         <AppProviders>{children}</AppProviders>
+        <Analytics />
       </body>
     </html>
   );
