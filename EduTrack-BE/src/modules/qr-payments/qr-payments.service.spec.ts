@@ -1,7 +1,7 @@
 import { compactVietQrDescription } from './qr-payments.service.js';
 
 describe('compactVietQrDescription', () => {
-  it('keeps all reconciliation fields within the VietQR limit', () => {
+  it('creates a short transfer description with month and student name', () => {
     const result = compactVietQrDescription({
       studentName: 'Vũ Thị Minh Vân',
       monthYear: '10/2026',
@@ -9,11 +9,11 @@ describe('compactVietQrDescription', () => {
       amount: 500000,
     });
 
-    expect(result).toBe('Vu Thi Minh Van HP 10/2026 1B 500000');
+    expect(result).toBe('HP T10/2026 Vu Thi Minh Van');
     expect(result.length).toBeLessThanOrEqual(40);
   });
 
-  it('truncates only the student name when the name is long', () => {
+  it('truncates the student name to the VietQR limit', () => {
     const result = compactVietQrDescription({
       studentName: 'Nguyễn Thị Minh Anh Phương',
       monthYear: '10/2026',
@@ -21,7 +21,7 @@ describe('compactVietQrDescription', () => {
       amount: 1500000,
     });
 
-    expect(result).toContain('HP 10/2026 12B 1500000');
+    expect(result.startsWith('HP T10/2026 ')).toBe(true);
     expect(result.length).toBeLessThanOrEqual(40);
   });
 });

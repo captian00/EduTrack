@@ -26,15 +26,12 @@ export function compactVietQrDescription(input: {
   lessonCount: number;
   amount: number;
 }) {
-  const suffix = ` HP ${input.monthYear} ${input.lessonCount}B ${input.amount}`;
-  const nameLength = Math.max(
-    1,
-    VIETQR_DESCRIPTION_MAX_LENGTH - suffix.length,
-  );
+  const prefix = `HP T${Number(input.monthYear.slice(0, 2))}/${input.monthYear.slice(3)} `;
+  const nameLength = VIETQR_DESCRIPTION_MAX_LENGTH - prefix.length;
   const studentName = normalizeTransferText(input.studentName)
     .slice(0, nameLength)
     .trim();
-  return `${studentName}${suffix}`.slice(0, VIETQR_DESCRIPTION_MAX_LENGTH);
+  return `${prefix}${studentName}`;
 }
 @Injectable()
 export class QrPaymentsService {
