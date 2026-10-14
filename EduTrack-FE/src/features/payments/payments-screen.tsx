@@ -1,6 +1,6 @@
 'use client';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { toBlob } from 'html-to-image';
+import { toCanvas } from 'html-to-image';
 import Image from 'next/image';
 import { useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
@@ -98,6 +98,7 @@ export function PaymentsScreen() {
   const [qr, setQr] = useState<Qr>();
   const [isDownloading, setIsDownloading] = useState(false);
   const receiptRef = useRef<HTMLElement>(null);
+  const receiptQrRef = useRef<HTMLImageElement>(null);
   const [preview, setPreview] = useState<Preview>();
   const [voidId, setVoidId] = useState<string>();
   const [voidReason, setVoidReason] = useState('');
@@ -229,7 +230,7 @@ export function PaymentsScreen() {
     } catch {}
   };
   const downloadReceipt = async () => {
-    if (!receiptRef.current || !qr) return;
+    if (!receiptRef.current || !receiptQrRef.current || !qr) return;
     setIsDownloading(true);
     try {
       await document.fonts?.ready;
@@ -245,9 +246,11 @@ export function PaymentsScreen() {
         }),
       );
       const receipt = receiptRef.current;
-      const width = Math.ceil(receipt.getBoundingClientRect().width);
-      const height = Math.ceil(receipt.getBoundingClientRect().height);
-      const receiptBlob = await toBlob(receipt, {
+      const receiptQr = receiptQrRef.current;
+      const receiptRect = receipt.getBoundingClientRect();
+      const width = Math.ceil(receiptRect.width);
+      const height = Math.ceil(receiptRect.height);
+      const receiptCanvas = await toCanvas(receipt, {
         cacheBust: true,
         pixelRatio: 2,
         backgroundColor: '#ffffff',
@@ -259,6 +262,25 @@ export function PaymentsScreen() {
           width: `${width}px`,
         },
       });
+      const qrRect = receiptQr.getBoundingClientRect();
+      const context = receiptCanvas.getContext('2d');
+      if (!context) throw new Error('Không thể tạo canvas phiếu học phí.');
+
+      // Safari/WebKit đôi khi bỏ ảnh trong SVG foreignObject của html-to-image.
+      // Vẽ lại QR từ phần tử đã tải trên trang để ảnh chia sẻ luôn có mã QR.
+      const scaleX = receiptCanvas.width / receiptRect.width;
+      const scaleY = receiptCanvas.height / receiptRect.height;
+      context.drawImage(
+        receiptQr,
+        (qrRect.left - receiptRect.left) * scaleX,
+        (qrRect.top - receiptRect.top) * scaleY,
+        qrRect.width * scaleX,
+        qrRect.height * scaleY,
+      );
+
+      const receiptBlob = await new Promise<Blob | null>((resolve) =>
+        receiptCanvas.toBlob(resolve, 'image/png'),
+      );
       if (!receiptBlob) throw new Error('Không thể tạo ảnh phiếu học phí.');
 
       const safeClassName = (qr.className ?? 'lop-hoc')
@@ -549,6 +571,7 @@ export function PaymentsScreen() {
                   Mã thanh toán
                 </p>
                 <Image
+                  ref={receiptQrRef}
                   src={qrImageUrl}
                   alt="Mã VietQR thanh toán"
                   width={256}
