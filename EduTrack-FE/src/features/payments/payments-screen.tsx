@@ -1,6 +1,6 @@
 'use client';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { toPng } from 'html-to-image';
+import { toBlob } from 'html-to-image';
 import Image from 'next/image';
 import { useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
@@ -155,6 +155,9 @@ export function PaymentsScreen() {
     (sum, item) => sum + item.outstanding,
     0,
   );
+  const qrImageUrl = qr
+    ? `/api/vietqr-image?url=${encodeURIComponent(qr.imageUrl)}`
+    : '';
   const paymentParams = {
     studentId: filterStudentId || undefined,
     status: filterStatus || undefined,
@@ -244,7 +247,7 @@ export function PaymentsScreen() {
       const receipt = receiptRef.current;
       const width = Math.ceil(receipt.getBoundingClientRect().width);
       const height = Math.ceil(receipt.getBoundingClientRect().height);
-      const dataUrl = await toPng(receipt, {
+      const receiptBlob = await toBlob(receipt, {
         cacheBust: true,
         pixelRatio: 2,
         backgroundColor: '#ffffff',
@@ -256,16 +259,44 @@ export function PaymentsScreen() {
           width: `${width}px`,
         },
       });
-      const link = document.createElement('a');
+      if (!receiptBlob) throw new Error('Không thể tạo ảnh phiếu học phí.');
+
       const safeClassName = (qr.className ?? 'lop-hoc')
         .normalize('NFD')
         .replace(/[\u0300-\u036f]/g, '')
         .replace(/[^a-zA-Z0-9]+/g, '-')
         .replace(/^-|-$/g, '')
         .toLowerCase();
-      link.download = `${qr.student.studentCode}-${safeClassName}-${qr.billingMonth ?? 'hoc-phi'}.png`;
-      link.href = dataUrl;
+      const fileName = `${qr.student.studentCode}-${safeClassName}-${qr.billingMonth ?? 'hoc-phi'}.png`;
+      const receiptFile = new File([receiptBlob], fileName, {
+        type: 'image/png',
+      });
+      const isIos =
+        /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+        (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+
+      if (
+        isIos &&
+        navigator.share &&
+        navigator.canShare?.({ files: [receiptFile] })
+      ) {
+        try {
+          await navigator.share({
+            files: [receiptFile],
+            title: 'Phiếu học phí',
+          });
+          return;
+        } catch (error) {
+          if (error instanceof DOMException && error.name === 'AbortError') return;
+        }
+      }
+
+      const objectUrl = URL.createObjectURL(receiptBlob);
+      const link = document.createElement('a');
+      link.download = fileName;
+      link.href = objectUrl;
       link.click();
+      window.setTimeout(() => URL.revokeObjectURL(objectUrl), 1_000);
     } catch {
       toast.error('Không thể tải phiếu. Vui lòng thử lại.');
     } finally {
@@ -518,12 +549,11 @@ export function PaymentsScreen() {
                   Mã thanh toán
                 </p>
                 <Image
-                  src={qr.imageUrl}
+                  src={qrImageUrl}
                   alt="Mã VietQR thanh toán"
                   width={256}
                   height={256}
                   unoptimized
-                  crossOrigin="anonymous"
                   className="mx-auto mt-1 h-auto w-full max-w-56 object-contain"
                 />
                 <p className="mt-2 break-all text-sm font-bold text-rose-600">
