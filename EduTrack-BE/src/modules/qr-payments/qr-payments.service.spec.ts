@@ -22,6 +22,7 @@ describe('compactVietQrDescription', () => {
     });
 
     expect(result.startsWith('HP T9/2026,10/2026 ')).toBe(true);
+    expect(result).toContain('Nguyen Thi Minh');
     expect(result.length).toBeLessThanOrEqual(40);
   });
 

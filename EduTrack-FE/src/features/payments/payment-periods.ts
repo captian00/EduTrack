@@ -41,3 +41,12 @@ export function selectedPeriodItems(
       classIds.includes(item.lesson.class.id),
   );
 }
+
+export function lessonDateLabels(dates: string[]) {
+  return [...new Set(dates.map((date) => date.slice(0, 10)))]
+    .sort()
+    .map((date) => {
+      const [, month, day] = date.split('-');
+      return `${day}/${month}`;
+    });
+}

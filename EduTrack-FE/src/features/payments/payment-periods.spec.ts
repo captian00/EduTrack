@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   billingClasses,
   billingMonths,
+  lessonDateLabels,
   outstandingTuitionItems,
   selectedPeriodItems,
   type TuitionItem,
@@ -64,5 +65,15 @@ describe('payment periods', () => {
     expect(selected.reduce((sum, item) => sum + item.outstanding, 0)).toBe(
       550_000,
     );
+  });
+
+  it('formats, sorts, and removes duplicate lesson dates', () => {
+    expect(
+      lessonDateLabels([
+        '2026-10-12T00:00:00.000Z',
+        '2026-10-02T00:00:00.000Z',
+        '2026-10-12T07:00:00.000Z',
+      ]),
+    ).toEqual(['02/10', '12/10']);
   });
 });

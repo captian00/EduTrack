@@ -53,6 +53,7 @@ import {
 import {
   billingClasses,
   billingMonths as deriveBillingMonths,
+  lessonDateLabels,
   outstandingTuitionItems,
   selectedPeriodItems,
   type TuitionItem,
@@ -640,21 +641,9 @@ export function PaymentsScreen() {
                   </dd>
                 </div>
                 <div className="flex items-center justify-between gap-4 py-2">
-                  <dt className="text-slate-500">Mã học sinh</dt>
-                  <dd className="text-right font-semibold">
-                    {qr.student.studentCode}
-                  </dd>
-                </div>
-                <div className="flex items-center justify-between gap-4 py-2">
                   <dt className="text-slate-500">Tháng học phí</dt>
                   <dd className="text-right font-semibold">
                     {qr.monthLabel.replace('Tháng ', '')}
-                  </dd>
-                </div>
-                <div className="flex items-center justify-between gap-4 py-2">
-                  <dt className="text-slate-500">Quy mô</dt>
-                  <dd className="text-right font-semibold">
-                    {qr.classCount} lớp · {qr.lessonCount} buổi
                   </dd>
                 </div>
               </dl>
@@ -695,14 +684,18 @@ export function PaymentsScreen() {
                             )}
                           </td>
                           <td className="px-3 py-3 align-top text-slate-600">
-                            {tier.lessonDates
-                              .map((date) => {
-                                const [year, month, day] = date
-                                  .slice(0, 10)
-                                  .split('-');
-                                return `${day}/${month}/${year}`;
-                              })
-                              .join(', ')}
+                            <div className="flex flex-wrap gap-1.5">
+                              {lessonDateLabels(tier.lessonDates).map(
+                                (date) => (
+                                  <span
+                                    key={date}
+                                    className="rounded-md border border-teal-200 bg-teal-50 px-2 py-1 text-xs font-semibold text-teal-700 tabular-nums"
+                                  >
+                                    {date}
+                                  </span>
+                                ),
+                              )}
+                            </div>
                           </td>
                           <td className="px-3 py-3 text-right align-top tabular-nums">
                             {money(tier.feePerSession)} × {tier.lessonCount}
@@ -747,10 +740,37 @@ export function PaymentsScreen() {
                       Thông tin học phí
                     </p>
                     <p className="mt-1 break-words">{qr.fullDescription}</p>
-                    <p className="mt-2 text-xs">
-                      Phiếu chỉ bao gồm các tháng, lớp đã chọn và những buổi còn
-                      công nợ.
-                    </p>
+                    <div className="mt-4 border-t border-teal-200 pt-3">
+                      <p className="text-xs font-semibold tracking-wide text-slate-500 uppercase">
+                        Các buổi đã học
+                      </p>
+                      <div className="mt-3 space-y-3">
+                        {qr.groups.map((group) => (
+                          <div
+                            key={`${group.billingMonth}-${group.classId}`}
+                            className="grid gap-2 sm:grid-cols-[minmax(130px,auto)_1fr] sm:items-start"
+                          >
+                            <p className="text-xs font-semibold text-slate-700">
+                              Tháng {Number(group.billingMonth.slice(5, 7))}/
+                              {group.billingMonth.slice(0, 4)} ·{' '}
+                              {group.className}
+                            </p>
+                            <div className="flex flex-wrap gap-1.5">
+                              {lessonDateLabels(group.lessonDates).map(
+                                (date) => (
+                                  <span
+                                    key={date}
+                                    className="rounded-md border border-teal-200 bg-white px-2 py-1 text-xs font-semibold text-teal-700 tabular-nums"
+                                  >
+                                    {date}
+                                  </span>
+                                ),
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
                   </div>
                 </div>
 
