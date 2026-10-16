@@ -9,6 +9,26 @@ import { GenerateQrDto } from './dto/generate-qr.dto.js';
 
 const VIETQR_DESCRIPTION_MAX_LENGTH = 40;
 
+type PriceTier = {
+  feePerSession: number;
+  lessonCount: number;
+  lessonDates: Date[];
+  originalAmount: number;
+  previouslyPaid: number;
+  remainingAmount: number;
+};
+
+type ReceiptGroup = {
+  billingMonth: string;
+  classId: string;
+  className: string;
+  lessonDates: Date[];
+  originalAmount: number;
+  previouslyPaid: number;
+  remainingAmount: number;
+  priceTiers: Map<number, PriceTier>;
+};
+
 function normalizeTransferText(value: string) {
   return value
     .normalize('NFD')
@@ -22,16 +42,18 @@ function normalizeTransferText(value: string) {
 
 export function compactVietQrDescription(input: {
   studentName: string;
-  monthYear: string;
+  monthLabel: string;
   lessonCount: number;
   amount: number;
 }) {
-  const prefix = `HP T${Number(input.monthYear.slice(0, 2))}/${input.monthYear.slice(3)} `;
-  const nameLength = VIETQR_DESCRIPTION_MAX_LENGTH - prefix.length;
+  const prefix = normalizeTransferText(`HP ${input.monthLabel}`);
+  if (prefix.length >= VIETQR_DESCRIPTION_MAX_LENGTH)
+    return prefix.slice(0, VIETQR_DESCRIPTION_MAX_LENGTH).trim();
+  const nameLength = VIETQR_DESCRIPTION_MAX_LENGTH - prefix.length - 1;
   const studentName = normalizeTransferText(input.studentName)
     .slice(0, nameLength)
     .trim();
-  return `${prefix}${studentName}`;
+  return `${prefix} ${studentName}`.trim();
 }
 @Injectable()
 export class QrPaymentsService {
@@ -40,12 +62,10 @@ export class QrPaymentsService {
     private readonly tuition: TuitionService,
   ) {}
   async generate(ownerId: string, input: GenerateQrDto) {
-    if (Boolean(input.billingMonth) !== Boolean(input.classId))
-      throw new BadRequestException('PAYMENT_SCOPE_INCOMPLETE');
-    const scope =
-      input.billingMonth && input.classId
-        ? { billingMonth: input.billingMonth, classId: input.classId }
-        : undefined;
+    const scope = {
+      billingMonths: input.billingMonths,
+      classIds: input.classIds,
+    };
     const [student, settings, charges] = await Promise.all([
       this.prisma.student.findFirst({
         where: { id: input.studentId, ownerId },
@@ -62,25 +82,21 @@ export class QrPaymentsService {
       (sum, charge) => sum + charge.outstanding,
       0,
     );
-    if (scope && outstanding === 0)
-      throw new BadRequestException('PAYMENT_SCOPE_EMPTY');
-    if (scope && input.amount !== outstanding)
+    if (outstanding === 0) throw new BadRequestException('PAYMENT_SCOPE_EMPTY');
+    if (input.amount !== outstanding)
       throw new BadRequestException('PAYMENT_AMOUNT_MISMATCH');
-    if (input.amount > outstanding)
-      throw new BadRequestException('Amount exceeds outstanding tuition');
-    const monthYear = scope
-      ? `${scope.billingMonth.slice(5, 7)}/${scope.billingMonth.slice(0, 4)}`
-      : new Intl.DateTimeFormat('en-GB', {
-          timeZone: 'Asia/Ho_Chi_Minh',
-          year: 'numeric',
-          month: '2-digit',
-        }).format(new Date());
-    const yearMonth = monthYear.split('/').reverse().join('');
+    const selectedMonths = [...input.billingMonths].sort();
+    const monthLabels = selectedMonths.map(
+      (month) => `${Number(month.slice(5, 7))}/${month.slice(0, 4)}`,
+    );
+    const transferMonthLabel = `T${monthLabels.join(',')}`;
+    const templateMonths = monthLabels.join(', ');
+    const yearMonth = selectedMonths.join(',');
     const lessonCount = charges.length;
     const formattedAmount = new Intl.NumberFormat('vi-VN').format(input.amount);
     const fullDescription = settings.transferDescriptionTemplate
       .replaceAll('{STUDENT_NAME}', student.fullName)
-      .replaceAll('{MMYYYY}', monthYear)
+      .replaceAll('{MMYYYY}', templateMonths)
       .replaceAll('{LESSON_COUNT}', String(lessonCount))
       .replaceAll('{TOTAL_AMOUNT}', formattedAmount)
       .replaceAll('{STUDENT_CODE}', student.studentCode)
@@ -88,30 +104,75 @@ export class QrPaymentsService {
       .trim();
     const description = compactVietQrDescription({
       studentName: student.fullName,
-      monthYear,
+      monthLabel: transferMonthLabel,
       lessonCount,
       amount: input.amount,
     });
     const imageUrl = `https://img.vietqr.io/image/${encodeURIComponent(settings.bankCode)}-${encodeURIComponent(settings.bankAccountNumber)}-compact2.png?amount=${input.amount}&addInfo=${encodeURIComponent(description)}${settings.bankAccountName ? `&accountName=${encodeURIComponent(settings.bankAccountName)}` : ''}`;
-    const feeAmounts = [...new Set(charges.map((charge) => charge.feeAmount))];
+    const groupMap = new Map<string, ReceiptGroup>();
+    for (const charge of charges) {
+      const billingMonth = charge.lessonDate.toISOString().slice(0, 7);
+      const key = `${billingMonth}:${charge.classId}`;
+      const group: ReceiptGroup = groupMap.get(key) ?? {
+        billingMonth,
+        classId: charge.classId,
+        className: charge.className,
+        lessonDates: [],
+        originalAmount: 0,
+        previouslyPaid: 0,
+        remainingAmount: 0,
+        priceTiers: new Map<number, PriceTier>(),
+      };
+      group.lessonDates.push(charge.lessonDate);
+      group.originalAmount += charge.feeAmount;
+      group.previouslyPaid += charge.paid;
+      group.remainingAmount += charge.outstanding;
+      const tier = group.priceTiers.get(charge.feeAmount) ?? {
+        feePerSession: charge.feeAmount,
+        lessonCount: 0,
+        lessonDates: [],
+        originalAmount: 0,
+        previouslyPaid: 0,
+        remainingAmount: 0,
+      };
+      tier.lessonCount += 1;
+      tier.lessonDates.push(charge.lessonDate);
+      tier.originalAmount += charge.feeAmount;
+      tier.previouslyPaid += charge.paid;
+      tier.remainingAmount += charge.outstanding;
+      group.priceTiers.set(charge.feeAmount, tier);
+      groupMap.set(key, group);
+    }
+    const groups = [...groupMap.values()].map((group) => ({
+      ...group,
+      lessonCount: group.lessonDates.length,
+      priceTiers: [...group.priceTiers.values()],
+    }));
+    const summary = groups.reduce(
+      (result, group) => ({
+        originalAmount: result.originalAmount + group.originalAmount,
+        previouslyPaid: result.previouslyPaid + group.previouslyPaid,
+        remainingAmount: result.remainingAmount + group.remainingAmount,
+      }),
+      { originalAmount: 0, previouslyPaid: 0, remainingAmount: 0 },
+    );
     return {
       imageUrl,
       amount: input.amount,
       description,
       fullDescription,
-      billingMonth: scope?.billingMonth,
-      monthLabel: `Tháng ${Number(monthYear.slice(0, 2))}/${monthYear.slice(3)}`,
+      selectedMonths,
+      monthLabel: `Tháng ${monthLabels.join(', ')}`,
       teacherName: settings.displayName,
-      classId: scope?.classId,
-      className: scope ? charges[0]?.className : undefined,
+      classCount: new Set(charges.map((charge) => charge.classId)).size,
       student: {
         id: student.id,
         studentCode: student.studentCode,
         fullName: student.fullName,
       },
-      feePerSession: feeAmounts.length === 1 ? feeAmounts[0] : null,
       lessonCount,
-      lessonDates: charges.map((charge) => charge.lessonDate),
+      summary,
+      groups,
       bankCode: settings.bankCode,
       bankAccountNumber: settings.bankAccountNumber,
       bankAccountName: settings.bankAccountName,

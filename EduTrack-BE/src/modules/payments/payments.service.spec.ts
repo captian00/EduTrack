@@ -9,8 +9,8 @@ describe('PaymentsService scoped payments', () => {
     amount: 500_000,
     paidAt: '2026-09-30T00:00:00.000Z',
     method: PaymentMethod.BANK_TRANSFER,
-    billingMonth: '2026-09',
-    classId: 'class-id',
+    billingMonths: ['2026-09', '2026-10'],
+    classIds: ['class-id', 'class-id-2'],
   };
 
   function setup(charges: { attendanceId: string; outstanding: number }[]) {
@@ -48,7 +48,10 @@ describe('PaymentsService scoped payments', () => {
         transactionClient,
         'owner-id',
         'student-id',
-        { billingMonth: '2026-09', classId: 'class-id' },
+        {
+          billingMonths: ['2026-09', '2026-10'],
+          classIds: ['class-id', 'class-id-2'],
+        },
       ],
     ]);
     expect(result.allocations).toEqual([
@@ -65,22 +68,5 @@ describe('PaymentsService scoped payments', () => {
     await expect(service.preview('owner-id', input)).rejects.toThrow(
       ConflictException,
     );
-  });
-
-  it('keeps legacy previews unscoped', async () => {
-    const { service, outstandingCalls, transactionClient } = setup([
-      { attendanceId: 'attendance-1', outstanding: 600_000 },
-    ]);
-
-    await service.preview('owner-id', {
-      studentId: input.studentId,
-      amount: input.amount,
-      paidAt: input.paidAt,
-      method: input.method,
-    });
-
-    expect(outstandingCalls).toEqual([
-      [transactionClient, 'owner-id', 'student-id', undefined],
-    ]);
   });
 });

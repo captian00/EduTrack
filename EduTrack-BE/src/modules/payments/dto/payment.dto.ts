@@ -1,5 +1,8 @@
 import { Type } from 'class-transformer';
 import {
+  ArrayMinSize,
+  ArrayUnique,
+  IsArray,
   IsDateString,
   IsEnum,
   IsInt,
@@ -20,8 +23,17 @@ export class CreatePaymentDto {
   @IsEnum(PaymentMethod) method!: PaymentMethod;
   @IsOptional() @IsString() @MaxLength(120) reference?: string;
   @IsOptional() @IsString() @MaxLength(500) note?: string;
-  @IsOptional() @Matches(/^\d{4}-(0[1-9]|1[0-2])$/) billingMonth?: string;
-  @IsOptional() @IsUUID() classId?: string;
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayUnique()
+  @Matches(/^\d{4}-(0[1-9]|1[0-2])$/, { each: true })
+  billingMonths!: string[];
+
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayUnique()
+  @IsUUID('4', { each: true })
+  classIds!: string[];
 }
 export class VoidPaymentDto {
   @IsString() @MinLength(3) @MaxLength(500) reason!: string;

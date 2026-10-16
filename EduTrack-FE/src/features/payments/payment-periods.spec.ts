@@ -39,17 +39,30 @@ describe('payment periods', () => {
     const outstanding = outstandingTuitionItems(items);
 
     expect(billingMonths(outstanding)).toEqual(['2026-09', '2026-10']);
-    expect(billingClasses(outstanding, '2026-09')).toEqual([
+    expect(billingClasses(outstanding, ['2026-09'])).toEqual([
       { id: 'class-a', name: '2E3' },
     ]);
   });
 
   it('selects only charges in the requested month and class', () => {
-    const selected = selectedPeriodItems(items, '2026-09', 'class-a');
+    const selected = selectedPeriodItems(items, ['2026-09'], ['class-a']);
 
     expect(selected).toHaveLength(1);
     expect(selected.reduce((sum, item) => sum + item.outstanding, 0)).toBe(
       250_000,
+    );
+  });
+
+  it('selects charges across multiple months and classes', () => {
+    const selected = selectedPeriodItems(
+      items,
+      ['2026-09', '2026-10'],
+      ['class-a', 'class-b'],
+    );
+
+    expect(selected).toHaveLength(2);
+    expect(selected.reduce((sum, item) => sum + item.outstanding, 0)).toBe(
+      550_000,
     );
   });
 });

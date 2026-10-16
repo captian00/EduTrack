@@ -2,6 +2,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toCanvas } from 'html-to-image';
 import Image from 'next/image';
+import { ChevronDown } from 'lucide-react';
 import { useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { PageHeader } from '@/components/shared/page-header';
@@ -43,9 +44,15 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
+import { Checkbox } from '@/components/ui/checkbox';
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@/components/ui/popover';
 import {
   billingClasses,
-  billingMonths,
+  billingMonths as deriveBillingMonths,
   outstandingTuitionItems,
   selectedPeriodItems,
   type TuitionItem,
@@ -70,30 +77,123 @@ type Qr = {
   description: string;
   fullDescription: string;
   amount: number;
-  billingMonth?: string;
+  selectedMonths: string[];
   monthLabel: string;
   teacherName: string | null;
-  classId?: string;
-  className?: string;
+  classCount: number;
   student: { id: string; studentCode: string; fullName: string };
-  feePerSession: number | null;
   lessonCount: number;
-  lessonDates: string[];
+  summary: PaymentAmounts;
+  groups: {
+    billingMonth: string;
+    classId: string;
+    className: string;
+    lessonDates: string[];
+    lessonCount: number;
+    originalAmount: number;
+    previouslyPaid: number;
+    remainingAmount: number;
+    priceTiers: (PaymentAmounts & {
+      feePerSession: number;
+      lessonCount: number;
+      lessonDates: string[];
+    })[];
+  }[];
   bankCode: string;
   bankAccountNumber: string;
   bankAccountName: string | null;
+};
+type PaymentAmounts = {
+  originalAmount: number;
+  previouslyPaid: number;
+  remainingAmount: number;
 };
 type TuitionDetail = {
   items: TuitionItem[];
 };
 type Preview = { allocations: { attendanceId: string; amount: number }[] };
 const money = formatCurrency;
+
+function MultiSelect({
+  values,
+  options,
+  placeholder,
+  disabled,
+  onChange,
+}: {
+  values: string[];
+  options: { value: string; label: string }[];
+  placeholder: string;
+  disabled?: boolean;
+  onChange: (values: string[]) => void;
+}) {
+  const selectedLabels = options
+    .filter((option) => values.includes(option.value))
+    .map((option) => option.label);
+  const label =
+    selectedLabels.length === 0
+      ? placeholder
+      : selectedLabels.length <= 2
+        ? selectedLabels.join(', ')
+        : `Đã chọn ${selectedLabels.length}`;
+
+  return (
+    <Popover>
+      <PopoverTrigger asChild>
+        <Button
+          type="button"
+          variant="outline"
+          disabled={disabled}
+          className="mt-2 w-full justify-between px-3 font-normal"
+        >
+          <span className="truncate">{label}</span>
+          <ChevronDown className="size-4 shrink-0 text-slate-500" />
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent
+        align="start"
+        className="w-[var(--radix-popover-trigger-width)] p-2"
+      >
+        {options.length === 0 ? (
+          <p className="px-2 py-3 text-sm text-slate-500">
+            Không có công nợ phù hợp.
+          </p>
+        ) : (
+          <div className="max-h-64 space-y-1 overflow-y-auto">
+            {options.map((option) => {
+              const checked = values.includes(option.value);
+              return (
+                <label
+                  key={option.value}
+                  className="flex cursor-pointer items-center gap-3 rounded-lg px-2 py-2 text-sm hover:bg-slate-50"
+                >
+                  <Checkbox
+                    checked={checked}
+                    onCheckedChange={(next) =>
+                      onChange(
+                        next
+                          ? [...values, option.value]
+                          : values.filter((value) => value !== option.value),
+                      )
+                    }
+                  />
+                  <span>{option.label}</span>
+                </label>
+              );
+            })}
+          </div>
+        )}
+      </PopoverContent>
+    </Popover>
+  );
+}
+
 export function PaymentsScreen() {
   const params = useListParams();
   const client = useQueryClient();
   const [studentId, setStudentId] = useState('');
-  const [billingMonth, setBillingMonth] = useState('');
-  const [classId, setClassId] = useState('');
+  const [billingMonths, setBillingMonths] = useState<string[]>([]);
+  const [classIds, setClassIds] = useState<string[]>([]);
   const [method, setMethod] = useState('BANK_TRANSFER');
   const [qr, setQr] = useState<Qr>();
   const [isDownloading, setIsDownloading] = useState(false);
@@ -141,21 +241,41 @@ export function PaymentsScreen() {
     [tuitionDetail.data],
   );
   const months = useMemo(
-    () => billingMonths(outstandingItems),
+    () => deriveBillingMonths(outstandingItems),
     [outstandingItems],
   );
   const classes = useMemo(
-    () => billingClasses(outstandingItems, billingMonth),
-    [billingMonth, outstandingItems],
+    () => billingClasses(outstandingItems, billingMonths),
+    [billingMonths, outstandingItems],
   );
   const selectedItems = useMemo(
-    () => selectedPeriodItems(outstandingItems, billingMonth, classId),
-    [billingMonth, classId, outstandingItems],
+    () => selectedPeriodItems(outstandingItems, billingMonths, classIds),
+    [billingMonths, classIds, outstandingItems],
   );
   const selectedAmount = selectedItems.reduce(
     (sum, item) => sum + item.outstanding,
     0,
   );
+  const selectedGroups = useMemo(() => {
+    const values = new Map<
+      string,
+      { month: string; className: string; lessonCount: number; amount: number }
+    >();
+    selectedItems.forEach((item) => {
+      const month = item.lesson.lessonDate.slice(0, 7);
+      const key = `${month}:${item.lesson.class.id}`;
+      const current = values.get(key) ?? {
+        month,
+        className: item.lesson.class.name,
+        lessonCount: 0,
+        amount: 0,
+      };
+      current.lessonCount += 1;
+      current.amount += item.outstanding;
+      values.set(key, current);
+    });
+    return [...values.values()];
+  }, [selectedItems]);
   const qrImageUrl = qr
     ? `/api/vietqr-image?url=${encodeURIComponent(qr.imageUrl)}`
     : '';
@@ -186,8 +306,8 @@ export function PaymentsScreen() {
         amount: selectedAmount,
         paidAt: new Date().toISOString(),
         method,
-        billingMonth,
-        classId,
+        billingMonths,
+        classIds,
       }),
     onSuccess: async () => {
       toast.success('Đã ghi nhận thanh toán');
@@ -208,8 +328,8 @@ export function PaymentsScreen() {
             amount: selectedAmount,
             paidAt: new Date().toISOString(),
             method,
-            billingMonth,
-            classId,
+            billingMonths,
+            classIds,
           })
         ).data,
       );
@@ -222,8 +342,8 @@ export function PaymentsScreen() {
           await apiClient.post<Qr>('/qr-payments/generate', {
             studentId,
             amount: selectedAmount,
-            billingMonth,
-            classId,
+            billingMonths,
+            classIds,
           })
         ).data,
       );
@@ -283,13 +403,11 @@ export function PaymentsScreen() {
       );
       if (!receiptBlob) throw new Error('Không thể tạo ảnh phiếu học phí.');
 
-      const safeClassName = (qr.className ?? 'lop-hoc')
-        .normalize('NFD')
-        .replace(/[\u0300-\u036f]/g, '')
-        .replace(/[^a-zA-Z0-9]+/g, '-')
-        .replace(/^-|-$/g, '')
-        .toLowerCase();
-      const fileName = `${qr.student.studentCode}-${safeClassName}-${qr.billingMonth ?? 'hoc-phi'}.png`;
+      const monthRange =
+        qr.selectedMonths.length > 1
+          ? `${qr.selectedMonths[0]}-${qr.selectedMonths.at(-1)}`
+          : qr.selectedMonths[0] || 'hoc-phi';
+      const fileName = `${qr.student.studentCode}-${monthRange}.png`;
       const receiptFile = new File([receiptBlob], fileName, {
         type: 'image/png',
       });
@@ -309,7 +427,8 @@ export function PaymentsScreen() {
           });
           return;
         } catch (error) {
-          if (error instanceof DOMException && error.name === 'AbortError') return;
+          if (error instanceof DOMException && error.name === 'AbortError')
+            return;
         }
       }
 
@@ -360,8 +479,8 @@ export function PaymentsScreen() {
             value={studentId}
             onValueChange={(value) => {
               setStudentId(value);
-              setBillingMonth('');
-              setClassId('');
+              setBillingMonths([]);
+              setClassIds([]);
               setPreview(undefined);
               setQr(undefined);
             }}
@@ -382,50 +501,43 @@ export function PaymentsScreen() {
         </label>
         <label className="text-sm font-medium">
           Tháng học phí
-          <Select
-            value={billingMonth}
-            onValueChange={(value) => {
-              setBillingMonth(value);
-              setClassId('');
+          <MultiSelect
+            values={billingMonths}
+            onChange={(values) => {
+              setBillingMonths(values);
+              const availableClassIds = new Set(
+                billingClasses(outstandingItems, values).map((item) => item.id),
+              );
+              setClassIds((current) =>
+                current.filter((id) => availableClassIds.has(id)),
+              );
               setPreview(undefined);
               setQr(undefined);
             }}
             disabled={!studentId || tuitionDetail.isPending}
-          >
-            <SelectTrigger>
-              <SelectValue placeholder="Chọn tháng" />
-            </SelectTrigger>
-            <SelectContent>
-              {months.map((month) => (
-                <SelectItem key={month} value={month}>
-                  Tháng {Number(month.slice(5, 7))}/{month.slice(0, 4)}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+            placeholder="Chọn tháng"
+            options={months.map((month) => ({
+              value: month,
+              label: `Tháng ${Number(month.slice(5, 7))}/${month.slice(0, 4)}`,
+            }))}
+          />
         </label>
         <label className="text-sm font-medium">
           Lớp học
-          <Select
-            value={classId}
-            onValueChange={(value) => {
-              setClassId(value);
+          <MultiSelect
+            values={classIds}
+            onChange={(values) => {
+              setClassIds(values);
               setPreview(undefined);
               setQr(undefined);
             }}
-            disabled={!billingMonth}
-          >
-            <SelectTrigger>
-              <SelectValue placeholder="Chọn lớp" />
-            </SelectTrigger>
-            <SelectContent>
-              {classes.map((item) => (
-                <SelectItem key={item.id} value={item.id}>
-                  {item.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+            disabled={billingMonths.length === 0}
+            placeholder="Chọn lớp"
+            options={classes.map((item) => ({
+              value: item.id,
+              label: item.name,
+            }))}
+          />
         </label>
         <label className="text-sm font-medium">
           Tổng học phí
@@ -449,7 +561,12 @@ export function PaymentsScreen() {
         <div className="flex flex-col-reverse gap-2 border-t border-slate-100 pt-4 sm:col-span-2 sm:flex-row sm:justify-end lg:col-span-5">
           <Button
             className="w-full sm:w-auto"
-            disabled={!studentId || !billingMonth || !classId || !selectedAmount}
+            disabled={
+              !studentId ||
+              !billingMonths.length ||
+              !classIds.length ||
+              !selectedAmount
+            }
           >
             Ghi nhận thanh toán
           </Button>
@@ -457,7 +574,12 @@ export function PaymentsScreen() {
             type="button"
             onClick={generateQr}
             variant="outline"
-            disabled={!studentId || !billingMonth || !classId || !selectedAmount}
+            disabled={
+              !studentId ||
+              !billingMonths.length ||
+              !classIds.length ||
+              !selectedAmount
+            }
             className="w-full sm:w-auto"
           >
             Tạo mã QR
@@ -469,12 +591,16 @@ export function PaymentsScreen() {
           <h2 className="font-semibold text-blue-950">Xác nhận phân bổ</h2>
           <p className="mt-1 text-sm text-blue-800">
             Khoản tiền sẽ được phân bổ vào {preview.allocations.length} buổi học
-            cũ nhất.
+            thuộc {billingMonths.length} tháng và{' '}
+            {new Set(selectedItems.map((item) => item.lesson.class.id)).size}{' '}
+            lớp.
           </p>
           <ul className="mt-3 space-y-1 text-sm text-blue-900">
-            {preview.allocations.map((item, index) => (
-              <li key={item.attendanceId}>
-                Khoản {index + 1}: {money(item.amount)}
+            {selectedGroups.map((group) => (
+              <li key={`${group.month}-${group.className}`}>
+                Tháng {Number(group.month.slice(5, 7))}/
+                {group.month.slice(0, 4)} · {group.className}:{' '}
+                {group.lessonCount} buổi · {money(group.amount)}
               </li>
             ))}
           </ul>
@@ -495,7 +621,7 @@ export function PaymentsScreen() {
           >
             <header className="bg-gradient-to-br from-teal-500 to-cyan-500 px-5 py-5 text-center text-white md:px-8 md:py-6">
               <p className="text-xs font-semibold tracking-[0.18em] uppercase">
-                {qr.teacherName || 'EduTrack'} · {qr.className || 'Lớp học'}
+                {qr.teacherName || 'EduTrack'}
               </p>
               <h2 className="mt-2 text-2xl font-bold tracking-wide">
                 PHIẾU HỌC PHÍ
@@ -505,93 +631,155 @@ export function PaymentsScreen() {
               </p>
             </header>
 
-            <div className="grid gap-6 p-5 md:grid-cols-[minmax(0,1fr)_320px] md:p-8">
-              <div className="min-w-0">
-                <dl className="divide-y divide-dashed divide-slate-200 text-sm">
+            <div className="space-y-6 p-5 md:p-8">
+              <dl className="grid gap-x-8 text-sm sm:grid-cols-2">
                 <div className="flex items-center justify-between gap-4 py-2">
-                  <dt className="text-slate-500">🎓 Học sinh</dt>
+                  <dt className="text-slate-500">Học sinh</dt>
                   <dd className="text-right font-semibold">
                     {qr.student.fullName}
                   </dd>
                 </div>
                 <div className="flex items-center justify-between gap-4 py-2">
-                  <dt className="text-slate-500">💎 Học phí / buổi</dt>
-                  <dd className="text-right font-semibold tabular-nums">
-                    {qr.feePerSession === null
-                      ? 'Nhiều mức'
-                      : money(qr.feePerSession)}
+                  <dt className="text-slate-500">Mã học sinh</dt>
+                  <dd className="text-right font-semibold">
+                    {qr.student.studentCode}
                   </dd>
                 </div>
                 <div className="flex items-center justify-between gap-4 py-2">
-                  <dt className="text-slate-500">📝 Số buổi học</dt>
+                  <dt className="text-slate-500">Tháng học phí</dt>
                   <dd className="text-right font-semibold">
-                    {qr.lessonCount} buổi
+                    {qr.monthLabel.replace('Tháng ', '')}
                   </dd>
                 </div>
-                </dl>
+                <div className="flex items-center justify-between gap-4 py-2">
+                  <dt className="text-slate-500">Quy mô</dt>
+                  <dd className="text-right font-semibold">
+                    {qr.classCount} lớp · {qr.lessonCount} buổi
+                  </dd>
+                </div>
+              </dl>
 
-              <div className="mt-3 rounded-2xl border-2 border-teal-200 bg-teal-50/70 px-4 py-4 text-center">
-                <p className="text-xs font-semibold tracking-wide text-slate-500 uppercase">
-                  Tổng học phí
-                </p>
-                <p className="mt-1 text-3xl font-extrabold text-teal-700 tabular-nums">
-                  {money(qr.amount)}
-                </p>
+              <div className="overflow-hidden rounded-xl border border-slate-200">
+                <table className="w-full text-left text-xs md:text-sm">
+                  <thead className="bg-slate-100 text-slate-600">
+                    <tr>
+                      <th className="px-3 py-2 font-semibold">Tháng · Lớp</th>
+                      <th className="px-3 py-2 font-semibold">Ngày học</th>
+                      <th className="px-3 py-2 text-right font-semibold">
+                        Đơn giá × buổi
+                      </th>
+                      <th className="px-3 py-2 text-right font-semibold">
+                        Thành tiền
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-200">
+                    {qr.groups.flatMap((group) =>
+                      group.priceTiers.map((tier, tierIndex) => (
+                        <tr
+                          key={`${group.billingMonth}-${group.classId}-${tier.feePerSession}`}
+                        >
+                          <td className="px-3 py-3 align-top font-semibold">
+                            {tierIndex === 0 ? (
+                              <>
+                                Tháng {Number(group.billingMonth.slice(5, 7))}/
+                                {group.billingMonth.slice(0, 4)}
+                                <span className="block text-slate-500">
+                                  {group.className}
+                                </span>
+                              </>
+                            ) : (
+                              <span className="text-slate-400">
+                                Mức phí khác
+                              </span>
+                            )}
+                          </td>
+                          <td className="px-3 py-3 align-top text-slate-600">
+                            {tier.lessonDates
+                              .map((date) => {
+                                const [year, month, day] = date
+                                  .slice(0, 10)
+                                  .split('-');
+                                return `${day}/${month}/${year}`;
+                              })
+                              .join(', ')}
+                          </td>
+                          <td className="px-3 py-3 text-right align-top tabular-nums">
+                            {money(tier.feePerSession)} × {tier.lessonCount}
+                          </td>
+                          <td className="px-3 py-3 text-right align-top tabular-nums">
+                            <span className="font-semibold">
+                              {money(tier.originalAmount)}
+                            </span>
+                            {tier.previouslyPaid > 0 && (
+                              <span className="block text-xs text-slate-500">
+                                Đã trả {money(tier.previouslyPaid)}
+                                <br />
+                                Còn {money(tier.remainingAmount)}
+                              </span>
+                            )}
+                          </td>
+                        </tr>
+                      )),
+                    )}
+                  </tbody>
+                </table>
               </div>
 
-                <div className="mt-5 text-center md:text-left">
-                <p className="text-[11px] font-semibold tracking-wide text-slate-500 uppercase">
-                  Ngày đi học
-                </p>
-                  <div className="mt-2 flex flex-wrap justify-center gap-1.5 md:justify-start">
-                  {qr.lessonDates.map((date, index) => {
-                    const [year, month, day] = date.slice(0, 10).split('-');
-                    return (
-                      <span
-                        key={`${date}-${index}`}
-                        className="rounded-md border border-teal-200 bg-teal-50 px-2 py-1 text-xs font-bold text-teal-700"
-                      >
-                        {day}/{month}
-                        <span className="sr-only">/{year}</span>
-                      </span>
-                    );
-                  })}
+              <div className="grid items-start gap-6 md:grid-cols-[minmax(0,1fr)_280px]">
+                <div className="space-y-4">
+                  <div className="rounded-xl bg-slate-50 p-4 text-sm">
+                    <div className="flex justify-between">
+                      <span>Tổng học phí gốc</span>
+                      <strong>{money(qr.summary.originalAmount)}</strong>
+                    </div>
+                    <div className="mt-2 flex justify-between text-slate-600">
+                      <span>Đã thanh toán</span>
+                      <strong>{money(qr.summary.previouslyPaid)}</strong>
+                    </div>
+                    <div className="mt-3 flex justify-between border-t border-slate-200 pt-3 text-lg text-teal-700">
+                      <strong>Cần thanh toán</strong>
+                      <strong>{money(qr.summary.remainingAmount)}</strong>
+                    </div>
+                  </div>
+                  <div className="rounded-xl bg-teal-50 p-4 text-sm text-slate-600">
+                    <p className="font-semibold text-slate-700">
+                      Thông tin học phí
+                    </p>
+                    <p className="mt-1 break-words">{qr.fullDescription}</p>
+                    <p className="mt-2 text-xs">
+                      Phiếu chỉ bao gồm các tháng, lớp đã chọn và những buổi còn
+                      công nợ.
+                    </p>
                   </div>
                 </div>
-                <div className="mt-5 rounded-xl bg-slate-50 p-4 text-left text-sm text-slate-600">
-                  <p className="font-semibold text-slate-700">
-                    Thông tin học phí
+
+                <div className="mx-auto w-full max-w-[280px] overflow-hidden rounded-2xl border-2 border-dashed border-teal-400 p-4 text-center">
+                  <p className="text-xs font-bold tracking-wide text-teal-700 uppercase">
+                    Mã thanh toán
                   </p>
-                  <p className="mt-1 break-words">{qr.fullDescription}</p>
+                  <Image
+                    ref={receiptQrRef}
+                    src={qrImageUrl}
+                    alt="Mã VietQR thanh toán"
+                    width={240}
+                    height={240}
+                    unoptimized
+                    className="mx-auto mt-1 h-auto w-full max-w-52 object-contain"
+                  />
+                  <p className="mt-2 text-sm font-bold break-all text-rose-600">
+                    {qr.bankCode} · {qr.bankAccountNumber}
+                  </p>
+                  {qr.bankAccountName && (
+                    <p className="mt-0.5 text-xs font-semibold text-slate-600 uppercase">
+                      {qr.bankAccountName}
+                    </p>
+                  )}
+                  <p className="mt-2 text-xs break-words text-slate-500">
+                    Nội dung: {qr.description}
+                  </p>
                 </div>
               </div>
-
-              <div className="mx-auto min-w-0 w-full max-w-[320px] self-start overflow-hidden rounded-2xl border-2 border-dashed border-teal-400 p-4 text-center">
-                <p className="text-xs font-bold tracking-wide text-teal-700 uppercase">
-                  Mã thanh toán
-                </p>
-                <Image
-                  ref={receiptQrRef}
-                  src={qrImageUrl}
-                  alt="Mã VietQR thanh toán"
-                  width={256}
-                  height={256}
-                  unoptimized
-                  className="mx-auto mt-1 h-auto w-full max-w-56 object-contain"
-                />
-                <p className="mt-2 break-all text-sm font-bold text-rose-600">
-                  {qr.bankCode} · {qr.bankAccountNumber}
-                </p>
-                {qr.bankAccountName && (
-                  <p className="mt-0.5 text-xs font-semibold text-slate-600 uppercase">
-                    {qr.bankAccountName}
-                  </p>
-                )}
-                <p className="mt-2 break-words text-xs text-slate-500">
-                  Nội dung: {qr.description}
-                </p>
-              </div>
-
             </div>
           </section>
           <div className="flex justify-center">

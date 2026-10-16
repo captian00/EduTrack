@@ -1,8 +1,15 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { PaymentStatus, Prisma } from '@prisma/client';
 import { PrismaService } from '../../database/prisma/prisma.service.js';
 import { paginationMeta } from '../../common/dto/pagination-query.dto.js';
-import { QueryTuitionSummaryDto, TuitionPaymentState } from './dto/query-tuition-summary.dto.js';
+import {
+  QueryTuitionSummaryDto,
+  TuitionPaymentState,
+} from './dto/query-tuition-summary.dto.js';
 @Injectable()
 export class TuitionService {
   constructor(private readonly prisma: PrismaService) {}
@@ -69,31 +76,60 @@ export class TuitionService {
       ),
     };
   }
-  async summary(ownerId: string, query: QueryTuitionSummaryDto = new QueryTuitionSummaryDto()) {
+  async summary(
+    ownerId: string,
+    query: QueryTuitionSummaryDto = new QueryTuitionSummaryDto(),
+  ) {
     if (query.from && query.to && new Date(query.from) > new Date(query.to))
       throw new BadRequestException('INVALID_DATE_RANGE');
     const search = query.search?.trim();
     const students = await this.prisma.student.findMany({
       where: {
         ownerId,
-        ...(search ? { OR: [
-          { fullName: { contains: search, mode: 'insensitive' as const } },
-          { studentCode: { contains: search, mode: 'insensitive' as const } },
-        ] } : {}),
+        ...(search
+          ? {
+              OR: [
+                {
+                  fullName: { contains: search, mode: 'insensitive' as const },
+                },
+                {
+                  studentCode: {
+                    contains: search,
+                    mode: 'insensitive' as const,
+                  },
+                },
+              ],
+            }
+          : {}),
       },
       orderBy: { fullName: 'asc' },
     });
     const rows = await Promise.all(
       students.map(async (student) => {
-        const detail = await this.studentDetail(ownerId, student.id, query.from, query.to);
+        const detail = await this.studentDetail(
+          ownerId,
+          student.id,
+          query.from,
+          query.to,
+        );
         const totals = detail.totals;
-        const paymentState = totals.outstanding === 0 ? TuitionPaymentState.PAID : totals.paid > 0 ? TuitionPaymentState.PARTIAL : TuitionPaymentState.UNPAID;
+        const paymentState =
+          totals.outstanding === 0
+            ? TuitionPaymentState.PAID
+            : totals.paid > 0
+              ? TuitionPaymentState.PARTIAL
+              : TuitionPaymentState.UNPAID;
         return { student, ...totals, paymentState };
       }),
     );
-    const filteredRows = query.paymentState ? rows.filter((row) => row.paymentState === query.paymentState) : rows;
+    const filteredRows = query.paymentState
+      ? rows.filter((row) => row.paymentState === query.paymentState)
+      : rows;
     const total = filteredRows.length;
-    const items = filteredRows.slice((query.page - 1) * query.pageSize, query.page * query.pageSize);
+    const items = filteredRows.slice(
+      (query.page - 1) * query.pageSize,
+      query.page * query.pageSize,
+    );
     return {
       items,
       totals: filteredRows.reduce(
@@ -111,14 +147,17 @@ export class TuitionService {
     tx: Prisma.TransactionClient,
     ownerId: string,
     studentId: string,
-    scope?: { billingMonth: string; classId: string },
+    scope?: { billingMonths: string[]; classIds: string[] },
   ) {
-    const monthStart = scope
-      ? new Date(`${scope.billingMonth}-01T00:00:00.000Z`)
-      : undefined;
-    const monthEnd = monthStart
-      ? new Date(Date.UTC(monthStart.getUTCFullYear(), monthStart.getUTCMonth() + 1, 1))
-      : undefined;
+    const monthRanges = scope?.billingMonths.map((billingMonth) => {
+      const start = new Date(`${billingMonth}-01T00:00:00.000Z`);
+      return {
+        gte: start,
+        lt: new Date(
+          Date.UTC(start.getUTCFullYear(), start.getUTCMonth() + 1, 1),
+        ),
+      };
+    });
     const charges = await tx.attendance.findMany({
       where: {
         ownerId,
@@ -127,8 +166,8 @@ export class TuitionService {
         ...(scope
           ? {
               lesson: {
-                classId: scope.classId,
-                lessonDate: { gte: monthStart, lt: monthEnd },
+                classId: { in: scope.classIds },
+                OR: monthRanges?.map((lessonDate) => ({ lessonDate })),
               },
             }
           : {}),
@@ -148,6 +187,7 @@ export class TuitionService {
         classId: charge.lesson.classId,
         className: charge.lesson.class.name,
         feeAmount: charge.feeAmount,
+        paid: charge.allocations.reduce((sum, value) => sum + value.amount, 0),
         outstanding:
           charge.feeAmount -
           charge.allocations.reduce((sum, value) => sum + value.amount, 0),

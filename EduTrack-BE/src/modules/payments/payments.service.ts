@@ -29,7 +29,16 @@ export class PaymentsService {
       ...(query.status ? { status: query.status } : {}),
       ...(query.method ? { method: query.method } : {}),
       ...(query.from || query.to
-        ? { paidAt: { ...(query.from ? { gte: new Date(`${query.from}T00:00:00+07:00`) } : {}), ...(query.to ? { lte: new Date(`${query.to}T23:59:59.999+07:00`) } : {}) } }
+        ? {
+            paidAt: {
+              ...(query.from
+                ? { gte: new Date(`${query.from}T00:00:00+07:00`) }
+                : {}),
+              ...(query.to
+                ? { lte: new Date(`${query.to}T23:59:59.999+07:00`) }
+                : {}),
+            },
+          }
         : {}),
     };
     const [items, total] = await this.prisma.$transaction([
@@ -152,16 +161,15 @@ export class PaymentsService {
     return allocateOldestFirst(charges, amount);
   }
   private paymentScope(input: CreatePaymentDto) {
-    if (Boolean(input.billingMonth) !== Boolean(input.classId))
-      throw new BadRequestException('PAYMENT_SCOPE_INCOMPLETE');
-    return input.billingMonth && input.classId
-      ? { billingMonth: input.billingMonth, classId: input.classId }
-      : undefined;
+    return {
+      billingMonths: input.billingMonths,
+      classIds: input.classIds,
+    };
   }
   private validateScopedAmount(
     charges: { outstanding: number }[],
     amount: number,
-    scope?: { billingMonth: string; classId: string },
+    scope?: { billingMonths: string[]; classIds: string[] },
   ) {
     if (!scope) return;
     const total = charges.reduce((sum, item) => sum + item.outstanding, 0);

@@ -4,7 +4,7 @@ describe('compactVietQrDescription', () => {
   it('creates a short transfer description with month and student name', () => {
     const result = compactVietQrDescription({
       studentName: 'Vũ Thị Minh Vân',
-      monthYear: '10/2026',
+      monthLabel: 'T10/2026',
       lessonCount: 1,
       amount: 500000,
     });
@@ -16,12 +16,23 @@ describe('compactVietQrDescription', () => {
   it('truncates the student name to the VietQR limit', () => {
     const result = compactVietQrDescription({
       studentName: 'Nguyễn Thị Minh Anh Phương',
-      monthYear: '10/2026',
+      monthLabel: 'T9/2026,10/2026',
       lessonCount: 12,
       amount: 1500000,
     });
 
-    expect(result.startsWith('HP T10/2026 ')).toBe(true);
+    expect(result.startsWith('HP T9/2026,10/2026 ')).toBe(true);
+    expect(result.length).toBeLessThanOrEqual(40);
+  });
+
+  it('truncates a long multi-month prefix to the VietQR limit', () => {
+    const result = compactVietQrDescription({
+      studentName: 'Nguyễn Văn An',
+      monthLabel: 'T1/2026,2/2026,3/2026,4/2026,5/2026,6/2026',
+      lessonCount: 20,
+      amount: 5_000_000,
+    });
+
     expect(result.length).toBeLessThanOrEqual(40);
   });
 });

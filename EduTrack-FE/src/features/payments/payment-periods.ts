@@ -17,10 +17,12 @@ export function billingMonths(items: TuitionItem[]) {
   ].sort();
 }
 
-export function billingClasses(items: TuitionItem[], billingMonth: string) {
+export function billingClasses(items: TuitionItem[], billingMonths: string[]) {
   const values = new Map<string, string>();
   items
-    .filter((item) => item.lesson.lessonDate.startsWith(billingMonth))
+    .filter((item) =>
+      billingMonths.includes(item.lesson.lessonDate.slice(0, 7)),
+    )
     .forEach((item) =>
       values.set(item.lesson.class.id, item.lesson.class.name),
     );
@@ -29,13 +31,13 @@ export function billingClasses(items: TuitionItem[], billingMonth: string) {
 
 export function selectedPeriodItems(
   items: TuitionItem[],
-  billingMonth: string,
-  classId: string,
+  billingMonths: string[],
+  classIds: string[],
 ) {
   return items.filter(
     (item) =>
       item.outstanding > 0 &&
-      item.lesson.lessonDate.startsWith(billingMonth) &&
-      item.lesson.class.id === classId,
+      billingMonths.includes(item.lesson.lessonDate.slice(0, 7)) &&
+      classIds.includes(item.lesson.class.id),
   );
 }
