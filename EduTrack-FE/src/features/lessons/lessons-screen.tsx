@@ -60,6 +60,7 @@ export function LessonsScreen() {
   const [classId, setClassId] = useState('');
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
   const [time, setTime] = useState('');
+  const [endTime, setEndTime] = useState('');
   const [topic, setTopic] = useState('');
   const filterClassId = params.get('classId');
   const rawStatus = params.get('status');
@@ -108,13 +109,18 @@ export function LessonsScreen() {
     mutationFn: async () => {
       if (editingId) {
         await apiClient.patch(`/lessons/${editingId}`, {
-          topic: topic || undefined,
+          classId,
+          lessonDate: date,
+          startTime: time || null,
+          endTime: endTime || null,
+          topic: topic || null,
         });
       } else {
         await apiClient.post('/lessons', {
           classId,
           lessonDate: date,
           startTime: time || undefined,
+          endTime: endTime || undefined,
           topic: topic || undefined,
         });
       }
@@ -123,6 +129,7 @@ export function LessonsScreen() {
       toast.success(editingId ? 'Đã cập nhật buổi học' : 'Đã tạo buổi học');
       setShow(false);
       setTopic('');
+      setEndTime('');
       setEditingId(undefined);
       await client.invalidateQueries({ queryKey: ['lessons'] });
     },
@@ -134,6 +141,10 @@ export function LessonsScreen() {
   };
   const edit = async (lesson: Lesson) => {
     setEditingId(lesson.id);
+    setClassId(lesson.class.id);
+    setDate(lesson.lessonDate.slice(0, 10));
+    setTime(lesson.startTime ? formatTime(lesson.startTime) : '');
+    setEndTime(lesson.endTime ? formatTime(lesson.endTime) : '');
     setTopic(lesson.topic ?? '');
     setShow(true);
   };
@@ -149,6 +160,10 @@ export function LessonsScreen() {
           <Button
             onClick={() => {
               setEditingId(undefined);
+              setClassId('');
+              setDate(new Date().toISOString().slice(0, 10));
+              setTime('');
+              setEndTime('');
               setTopic('');
               setShow(!show);
             }}
@@ -193,11 +208,19 @@ export function LessonsScreen() {
             />
           </label>
           <label className="text-sm font-medium">
+            Giờ kết thúc
+            <Input
+              type="time"
+              value={endTime}
+              onChange={(e) => setEndTime(e.target.value)}
+            />
+          </label>
+          <label className="text-sm font-medium">
             Chủ đề
             <Input value={topic} onChange={(e) => setTopic(e.target.value)} />
           </label>
           <Button
-            disabled={!editingId && !classId}
+            disabled={!classId}
             loading={create.isPending}
             className="sm:col-span-2"
           >
@@ -378,15 +401,13 @@ export function LessonsScreen() {
                         </Link>
                       </Button>
                     )}
-                    {item.status === 'SCHEDULED' && (
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => edit(item)}
-                      >
-                        Sửa
-                      </Button>
-                    )}
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => edit(item)}
+                    >
+                      Sửa
+                    </Button>
                     {item.status === 'SCHEDULED' && (
                       <Button
                         size="sm"
@@ -455,11 +476,9 @@ export function LessonsScreen() {
                   </Link>
                 </Button>
               )}
-              {item.status === 'SCHEDULED' && (
-                <Button size="sm" variant="outline" onClick={() => edit(item)}>
-                  Sửa
-                </Button>
-              )}
+              <Button size="sm" variant="outline" onClick={() => edit(item)}>
+                Sửa
+              </Button>
               {item.status === 'SCHEDULED' && (
                 <Button
                   size="sm"

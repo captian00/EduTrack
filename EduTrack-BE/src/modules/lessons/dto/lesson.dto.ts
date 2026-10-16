@@ -1,4 +1,3 @@
-import { PartialType } from '@nestjs/swagger';
 import {
   IsDateString,
   IsEnum,
@@ -17,7 +16,17 @@ export class CreateLessonDto {
   @IsOptional() @Matches(/^([01]\d|2[0-3]):[0-5]\d$/) endTime?: string;
   @IsOptional() @IsString() @MaxLength(500) topic?: string;
 }
-export class UpdateLessonDto extends PartialType(CreateLessonDto) {}
+export class UpdateLessonDto {
+  @IsOptional() @IsUUID() classId?: string;
+  @IsOptional() @IsDateString() lessonDate?: string;
+  @IsOptional()
+  @Matches(/^([01]\d|2[0-3]):[0-5]\d$/)
+  startTime?: string | null;
+  @IsOptional()
+  @Matches(/^([01]\d|2[0-3]):[0-5]\d$/)
+  endTime?: string | null;
+  @IsOptional() @IsString() @MaxLength(500) topic?: string | null;
+}
 export class QueryLessonsDto extends PaginationQueryDto {
   @IsOptional() @IsUUID() classId?: string;
   @IsOptional() @IsEnum(LessonStatus) status?: LessonStatus;

@@ -12,7 +12,7 @@ import {
   QueryLessonsDto,
   UpdateLessonDto,
 } from './dto/lesson.dto.js';
-const timeValue = (value?: string) =>
+const timeValue = (value?: string | null) =>
   value ? new Date(`1970-01-01T${value}:00.000Z`) : null;
 @Injectable()
 export class LessonsService {
@@ -81,9 +81,8 @@ export class LessonsService {
   }
   async update(ownerId: string, id: string, input: UpdateLessonDto) {
     const lesson = await this.get(ownerId, id);
-    if (lesson.status !== LessonStatus.SCHEDULED)
-      throw new BadRequestException('Only scheduled lessons can be edited');
-    if (input.classId) await this.assertClass(ownerId, input.classId);
+    if (input.classId && input.classId !== lesson.classId)
+      await this.assertClass(ownerId, input.classId);
     this.assertTimes(input.startTime, input.endTime);
     if (input.classId || input.lessonDate || input.startTime !== undefined) {
       await this.assertNotDuplicate(
@@ -126,7 +125,7 @@ export class LessonsService {
     )
       throw new NotFoundException('CLASS_NOT_FOUND');
   }
-  private assertTimes(start?: string, end?: string) {
+  private assertTimes(start?: string | null, end?: string | null) {
     if (start && end && end <= start)
       throw new BadRequestException('INVALID_LESSON_TIME');
   }
