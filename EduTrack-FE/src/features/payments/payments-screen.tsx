@@ -684,7 +684,10 @@ export function PaymentsScreen() {
                             )}
                           </td>
                           <td className="px-3 py-3 align-top text-slate-600">
-                            <div className="flex flex-wrap gap-1.5">
+                            <span className="font-medium whitespace-nowrap sm:hidden">
+                              {tier.lessonCount} buổi
+                            </span>
+                            <div className="hidden flex-wrap gap-1.5 sm:flex">
                               {lessonDateLabels(tier.lessonDates).map(
                                 (date) => (
                                   <span
